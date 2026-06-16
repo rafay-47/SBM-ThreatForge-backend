@@ -1,0 +1,53 @@
+"""Prompt provider that routes to the correct prompt module based on model provider."""
+
+import os
+
+from constants import (
+    MODEL_PROVIDER_BEDROCK,
+    MODEL_PROVIDER_FIREWORKS,
+    MODEL_PROVIDER_OPENAI,
+    MODEL_PROVIDER_OPENROUTER,
+)
+
+# Resolve provider once at import time
+try:
+    from config import config
+
+    _provider = config.model_provider
+except ImportError:
+    _provider = os.environ.get("MODEL_PROVIDER", MODEL_PROVIDER_BEDROCK)
+
+if _provider in (
+    MODEL_PROVIDER_OPENAI,
+    MODEL_PROVIDER_OPENROUTER,
+    MODEL_PROVIDER_FIREWORKS,
+):
+    from prompts_gpt import (  # noqa: F401
+        APPLICATION_TYPE_DESCRIPTIONS,
+        asset_prompt,
+        create_version_agent_system_prompt,
+        create_flows_agent_system_prompt,
+        create_space_context_system_prompt,
+        create_threats_agent_system_prompt,
+        version_diff_prompt,
+        gap_prompt,
+        structure_prompt,
+        summary_prompt,
+        threats_improve_prompt,
+        threats_prompt,
+    )
+else:
+    from prompts import (  # noqa: F401
+        APPLICATION_TYPE_DESCRIPTIONS,
+        asset_prompt,
+        create_version_agent_system_prompt,
+        create_flows_agent_system_prompt,
+        create_space_context_system_prompt,
+        create_threats_agent_system_prompt,
+        version_diff_prompt,
+        gap_prompt,
+        structure_prompt,
+        summary_prompt,
+        threats_improve_prompt,
+        threats_prompt,
+    )

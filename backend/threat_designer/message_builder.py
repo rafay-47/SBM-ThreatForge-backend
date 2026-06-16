@@ -1,0 +1,491 @@
+"""Message building utilities for model interactions."""
+
+import os
+from typing import Any, Dict, List, Optional
+
+from langchain_core.messages import SystemMessage
+from langchain_core.messages.human import HumanMessage
+
+from constants import ENV_MODEL_PROVIDER, MODEL_PROVIDER_BEDROCK
+
+# ---------------------------------------------------------------------------
+# Bedrock prompt-caching helpers
+# ---------------------------------------------------------------------------
+
+_MODEL_PROVIDER = os.environ.get(ENV_MODEL_PROVIDER, MODEL_PROVIDER_BEDROCK)
+_CACHE_POINT = {"cachePoint": {"type": "default"}}
+
+
+def _has_trailing_cache_point(content: list) -> bool:
+    """Check whether the last content block is already a cachePoint."""
+    if not content:
+        return False
+    last = content[-1]
+    return isinstance(last, dict) and "cachePoint" in last
+
+
+def inject_bedrock_cache_points(messages: list) -> list:
+    """Return a shallow copy of *messages* with Bedrock cache breakpoints.
+
+    Two breakpoints are placed (Bedrock allows up to 4):
+      1. **System message** — caches the prompt + tool definitions prefix.
+      2. **Last message** — rolling boundary so the cached prefix grows
+         with each ReAct iteration.
+
+    Original messages are never mutated. For non-Bedrock providers the
+    input is returned unchanged.
+    """
+    if _MODEL_PROVIDER != MODEL_PROVIDER_BEDROCK or not messages:
+        return messages
+
+    result = list(messages)  # shallow copy of the list
+
+    # 1. System message
+    if isinstance(result[0], SystemMessage):
+        sys_content = result[0].content
+        if isinstance(sys_content, str):
+            result[0] = result[0].model_copy(
+                update={
+                    "content": [{"type": "text", "text": sys_content}, _CACHE_POINT]
+                }
+            )
+        elif isinstance(sys_content, list) and not _has_trailing_cache_point(
+            sys_content
+        ):
+            result[0] = result[0].model_copy(
+                update={"content": list(sys_content) + [_CACHE_POINT]}
+            )
+
+    # 2. Last message (rolling boundary) — skip if same as system message
+    if len(result) > 1:
+        last_content = result[-1].content
+        if isinstance(last_content, str):
+            result[-1] = result[-1].model_copy(
+                update={
+                    "content": [{"type": "text", "text": last_content}, _CACHE_POINT]
+                }
+            )
+        elif isinstance(last_content, list) and not _has_trailing_cache_point(
+            last_content
+        ):
+            result[-1] = result[-1].model_copy(
+                update={"content": list(last_content) + [_CACHE_POINT]}
+            )
+
+    return result
+
+
+class MessageBuilder:
+    """Utility class for building standardized messages."""
+
+    def __init__(
+        self,
+        image_data: Optional[str],
+        description: str,
+        assumptions: str,
+        image_type: str = None,
+        architecture_diagram_text: Optional[str] = None,
+    ) -> None:
+        """Message builder constructor"""
+
+        self.image_data = image_data
+        self.description = description
+        self.assumptions = assumptions
+        self.image_type = image_type
+        self.architecture_diagram_text = architecture_diagram_text
+        self.provider = os.environ.get(ENV_MODEL_PROVIDER, MODEL_PROVIDER_BEDROCK)
+
+    def _get_mime_type(self) -> str:
+        """Determine MIME type from image_type parameter.
+
+        Returns:
+            str: The MIME type string ('image/png' or 'image/jpeg')
+        """
+        if self.image_type:
+            image_type_lower = self.image_type.lower()
+            if "png" in image_type_lower:
+                return "image/png"
+            elif "jpeg" in image_type_lower or "jpg" in image_type_lower:
+                return "image/jpeg"
+        # Default to JPEG for backward compatibility
+        return "image/jpeg"
+
+    def _format_asset_list(self, assets) -> str:
+        """Helper function to format asset names as plain comma-separated quoted strings."""
+        if not assets or not hasattr(assets, "assets") or not assets.assets:
+            return "No assets identified yet."
+
+        asset_names = [asset.name for asset in assets.assets]
+        return ", ".join([f'"{name}"' for name in asset_names])
+
+    def _format_threat_sources(self, system_architecture) -> str:
+        """Helper function to format threat source categories as plain comma-separated quoted strings."""
+        if (
+            not system_architecture
+            or not hasattr(system_architecture, "threat_sources")
+            or not system_architecture.threat_sources
+        ):
+            return "No threat sources identified yet."
+
+        source_categories = [
+            source.category for source in system_architecture.threat_sources
+        ]
+        return ", ".join([f'"{category}"' for category in source_categories])
+
+    def _add_cache_point_if_bedrock(self) -> List[Dict[str, Any]]:
+        """Add cache point marker only for Bedrock provider."""
+        if self.provider == MODEL_PROVIDER_BEDROCK:
+            return [{"cachePoint": {"type": "default"}}]
+        return []
+
+    def _build_valid_values_block(self, assets, system_architecture) -> str:
+        """Build the valid_values_for_threats XML block used in threat messages."""
+        return (
+            "<valid_values_for_threats>\n"
+            "**IMPORTANT: When creating threats using the add_threats tool, you MUST use ONLY these values for the following fields:**\n\n"
+            "**Valid Target Assets (for the 'target' field):**\n"
+            f"{self._format_asset_list(assets)}\n\n"
+            "**Valid Threat Sources (for the 'source' field):**\n"
+            f"{self._format_threat_sources(system_architecture)}\n\n"
+            "Using any other values will result in validation errors.\n"
+            "</valid_values_for_threats>"
+        )
+
+    def base_msg(
+        self, caching: bool = False, details: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Base message for all messages."""
+        provider = os.environ.get(ENV_MODEL_PROVIDER, MODEL_PROVIDER_BEDROCK)
+
+        if self.architecture_diagram_text:
+            base_message = [
+                {"type": "text", "text": "<architecture_diagram>"},
+                {"type": "text", "text": self.architecture_diagram_text},
+                {"type": "text", "text": "</architecture_diagram>"},
+            ]
+        else:
+            if not self.image_data:
+                raise ValueError(
+                    "Architecture diagram is required: set image_data or architecture_diagram_text"
+                )
+            mime_type = self._get_mime_type()
+            base_message = [
+                {"type": "text", "text": "<architecture_diagram>"},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime_type};base64,{self.image_data}"},
+                },
+                {"type": "text", "text": "</architecture_diagram>"},
+            ]
+
+        if details:
+            base_message.extend(
+                [
+                    {
+                        "type": "text",
+                        "text": f"<description>{self.description}</description>",
+                    },
+                    {
+                        "type": "text",
+                        "text": f"<assumptions>{self.assumptions}</assumptions>",
+                    },
+                ]
+            )
+
+        if caching and provider == MODEL_PROVIDER_BEDROCK:
+            base_message.extend(self._add_cache_point_if_bedrock())
+
+        return base_message
+
+    def create_summary_message(self, max_words: int = 40) -> HumanMessage:
+        """Create summary message."""
+
+        summary_msg = [
+            {
+                "type": "text",
+                "text": f"Generate a short headline summary of max {max_words} words this architecture using the diagram and description if available",
+            },
+        ]
+
+        base_message = self.base_msg()
+        base_message.extend(summary_msg)
+        return HumanMessage(content=base_message)
+
+    def create_asset_message(self) -> HumanMessage:
+        """Create asset message."""
+
+        asset_msg = [
+            {"type": "text", "text": "Identify Assets"},
+        ]
+
+        base_message = self.base_msg()
+        base_message.extend(asset_msg)
+        return HumanMessage(content=base_message)
+
+    def create_system_flows_message(
+        self,
+        assets: str,
+    ) -> HumanMessage:
+        """Create system flows message."""
+
+        system_flows_msg = [
+            {
+                "type": "text",
+                "text": f"<identified_assets_and_entities>{assets}</identified_assets_and_entities>",
+            },
+            {"type": "text", "text": "Identify system flows"},
+        ]
+
+        base_message = self.base_msg()
+        base_message.extend(system_flows_msg)
+        return HumanMessage(content=base_message)
+
+    def create_threat_message(self, assets, flows) -> HumanMessage:
+        """Create threat analysis message."""
+
+        threat_msg = [
+            {
+                "type": "text",
+                "text": f"<identified_assets_and_entities>{assets}</identified_assets_and_entities>",
+            },
+            {"type": "text", "text": f"<data_flow>{flows}</data_flow>"},
+            {"type": "text", "text": self._build_valid_values_block(assets, flows)},
+            {"type": "text", "text": "Define threats and mitigations for the solution"},
+        ]
+
+        base_message = self.base_msg()
+        base_message.extend(threat_msg)
+        return HumanMessage(content=base_message)
+
+    def create_threat_improve_message(
+        self, assets, flows, threat_list: str
+    ) -> HumanMessage:
+        """Create threat improvement analysis message."""
+
+        threat_msg = [
+            {
+                "type": "text",
+                "text": f"<identified_assets_and_entities>{assets}</identified_assets_and_entities>",
+            },
+            {"type": "text", "text": f"<data_flow>{flows}</data_flow>"},
+        ]
+
+        # Add cache point only for Bedrock
+        threat_msg.extend(self._add_cache_point_if_bedrock())
+
+        threat_msg.extend(
+            [
+                {"type": "text", "text": self._build_valid_values_block(assets, flows)},
+                {"type": "text", "text": f"<threats>{threat_list}</threats>"},
+                {
+                    "type": "text",
+                    "text": "Identify missing threats and respective mitigations for the solution",
+                },
+            ]
+        )
+
+        base_message = self.base_msg(caching=True)
+        base_message.extend(threat_msg)
+        return HumanMessage(content=base_message)
+
+    def create_gap_analysis_message(
+        self,
+        assets: str,
+        flows: str,
+        threat_list: str,
+        gap: str,
+        threat_sources: str = None,
+        kpis: str = None,
+    ) -> HumanMessage:
+        """Create threat improvement analysis message with optional KPI metrics.
+
+        Args:
+            assets: JSON string of identified assets
+            flows: JSON string of data flows
+            threat_list: JSON string of current threats
+            gap: String of previous gap analysis results
+            threat_sources: Optional string of valid threat source categories
+            kpis: Optional formatted KPI metrics string
+
+        Returns:
+            HumanMessage with gap analysis context
+        """
+
+        gap_msg = [
+            {
+                "type": "text",
+                "text": f"<identified_assets_and_entities>{assets}</identified_assets_and_entities>",
+            },
+            {"type": "text", "text": f"<data_flow>{flows}</data_flow>"},
+        ]
+
+        # Add cache point only for Bedrock
+        gap_msg.extend(self._add_cache_point_if_bedrock())
+
+        # Add KPI section after cache point and before threats (if provided)
+        if kpis:
+            gap_msg.append({"type": "text", "text": kpis})
+
+        gap_msg.extend(
+            [
+                {"type": "text", "text": f"<threats>{threat_list}</threats>"},
+                {"type": "text", "text": f"<previous_gap>{gap}</previous_gap>\n"},
+            ]
+        )
+
+        # Add threat sources validation section if provided
+        if threat_sources:
+            threat_sources_text = f"""<valid_threat_source_categories>
+**IMPORTANT: When validating threat actors, these are the ONLY valid threat source categories:**
+
+{threat_sources}
+
+</valid_threat_source_categories>"""
+            gap_msg.append({"type": "text", "text": threat_sources_text})
+
+        gap_msg.append(
+            {
+                "type": "text",
+                "text": "Review the threat model for gaps",
+            }
+        )
+
+        base_message = self.base_msg(caching=True)
+        base_message.extend(gap_msg)
+        return HumanMessage(content=base_message)
+
+    def create_threats_agent_message(
+        self,
+        assets=None,
+        system_architecture=None,
+        partitions=None,
+        starred_threats=None,
+    ) -> HumanMessage:
+        """Create threats agent message with optional analysis group guidance.
+
+        Args:
+            assets: Full assets object
+            system_architecture: Full system architecture
+            partitions: List of asset name lists from compute_partitions()
+            starred_threats: Starred threats to preserve
+
+        Returns:
+            HumanMessage with architecture context and optional analysis groups
+        """
+        base_message = self.base_msg(caching=True, details=True)
+
+        if assets:
+            base_message.append(
+                {
+                    "type": "text",
+                    "text": f"<identified_assets_and_entities>{str(assets)}</identified_assets_and_entities>",
+                }
+            )
+
+        if system_architecture:
+            base_message.append(
+                {
+                    "type": "text",
+                    "text": f"<data_flows>{str(system_architecture)}</data_flows>",
+                }
+            )
+
+        # Valid values (full scope)
+        base_message.append(
+            {
+                "type": "text",
+                "text": self._build_valid_values_block(assets, system_architecture),
+            }
+        )
+
+        # Analysis groups guidance (only when >1 partition)
+        if partitions and len(partitions) > 1:
+            groups_text = "\n\n<analysis_groups>\n"
+            groups_text += "Work through these asset groups in order to ensure systematic coverage:\n\n"
+            for i, group in enumerate(partitions, 1):
+                group_names = ", ".join([f'"{name}"' for name in group])
+                groups_text += f"Group {i}: {group_names}\n"
+            groups_text += "\nThese groups are based on data-flow connectivity and trust boundaries. "
+            groups_text += "Analyze each group before moving to the next, but you may add threats targeting any asset.\n"
+            groups_text += "</analysis_groups>"
+            base_message.append({"type": "text", "text": groups_text})
+
+        if starred_threats:
+            starred_context = "\n\n<starred_threats>\nThe following threats have been marked as important by the user and must be preserved:\n"
+            for threat in starred_threats:
+                starred_context += f"- {threat.name}: {threat.description}\n"
+            starred_context += "</starred_threats>"
+            base_message.append({"type": "text", "text": starred_context})
+
+        base_message.append(
+            {
+                "type": "text",
+                "text": "Perform a comprehensive threat modeling and fill the threat catalog. Make sure to honor your grounding rules.",
+            }
+        )
+
+        base_message.extend(self._add_cache_point_if_bedrock())
+
+        return HumanMessage(content=base_message)
+
+    def space_insights_block(self, space_insights) -> Dict[str, Any]:
+        """Return a content block with formatted space insights for injection into prompts.
+
+        Args:
+            space_insights: SpaceInsightsList containing extracted insights from the space KB.
+
+        Returns:
+            Dict content block with XML-tagged insights text.
+        """
+        if not space_insights or not space_insights.insights:
+            return None
+
+        lines = ["<space_knowledge_insights>"]
+        for i, insight in enumerate(space_insights.insights, 1):
+            lines.append(f'  <insight id="{i}">{insight}</insight>')
+        lines.append("</space_knowledge_insights>")
+
+        return {"type": "text", "text": "\n".join(lines)}
+
+
+def extract_reasoning_trails(messages: list) -> List[str]:
+    """Extract thinking/reasoning content blocks from agent messages.
+
+    Handles Bedrock (thinking, reasoning_content) and OpenAI (reasoning/summary)
+    formats, plus the additional_kwargs fallback.
+    """
+    trails: List[str] = []
+    for msg in messages:
+        if hasattr(msg, "content") and isinstance(msg.content, list):
+            for block in msg.content:
+                if isinstance(block, dict):
+                    if block.get("type") == "thinking":
+                        trails.append(block.get("thinking", ""))
+                    elif block.get("type") == "reasoning_content":
+                        rc = block.get("reasoning_content", {})
+                        if isinstance(rc, dict) and rc.get("text"):
+                            trails.append(rc["text"])
+                    elif block.get("type") == "reasoning":
+                        summary = block.get("summary", [])
+                        if isinstance(summary, list):
+                            texts = [
+                                s.get("text", "").strip()
+                                for s in summary
+                                if isinstance(s, dict)
+                                and s.get("type") == "summary_text"
+                                and s.get("text")
+                            ]
+                            if texts:
+                                trails.append("\n\n".join(texts))
+        elif hasattr(msg, "additional_kwargs"):
+            thinking = msg.additional_kwargs.get("reasoning_content")
+            if thinking:
+                trails.append(thinking)
+    return trails
+
+
+def list_to_string(str_list: List[str]) -> str:
+    """Convert a list of strings to a single string."""
+    if not str_list:
+        return " "
+    return "\n".join(str_list)

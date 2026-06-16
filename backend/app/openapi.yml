@@ -1,0 +1,4491 @@
+openapi: 3.0.1
+info:
+  version: 2.0.0
+  title: Threat designer APIs
+  description: Threat designer api
+security:
+  - LambdaAuthorizer: []
+x-amazon-apigateway-request-validators:
+  validateBodyAndParams:
+    validateRequestBody: true
+    validateRequestParameters: true
+  validateParams:
+    validateRequestBody: false
+    validateRequestParameters: true
+x-amazon-apigateway-gateway-responses:
+  ACCESS_DENIED:
+    statusCode: 403
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "method.request.header.Origin"
+      gatewayresponse.header.Access-Control-Allow-Headers: "'Authorization,Content-Type,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      gatewayresponse.header.Access-Control-Allow-Credentials: "'true'"
+    responseTemplates:
+      application/json: |-
+        {
+          "message": "$context.authorizer.errorMessage",
+          "code":  "Forbidden"
+        }
+  UNAUTHORIZED:
+    statusCode: 401
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "method.request.header.Origin"
+      gatewayresponse.header.Access-Control-Allow-Headers: "'Authorization,Content-Type,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      gatewayresponse.header.Access-Control-Allow-Credentials: "'true'"
+    responseTemplates:
+      application/json: |-
+        {
+          "message": "Unauthorized. Session potentially expired.",
+          "code":  "Unauthorized"
+        }
+  BAD_REQUEST_PARAMETERS:
+    statusCode: 400
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "method.request.header.Origin"
+      gatewayresponse.header.Access-Control-Allow-Headers: "'Authorization,Content-Type,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      gatewayresponse.header.Access-Control-Allow-Credentials: "'true'"
+    responseTemplates:
+      application/json: |-
+        {
+          "message": "$context.error.validationErrorString",
+          "code":  "BadRequestParams"
+        }
+  BAD_REQUEST_BODY:
+    statusCode: 400
+    responseParameters:
+      gatewayresponse.header.Access-Control-Allow-Origin: "method.request.header.Origin"
+      gatewayresponse.header.Access-Control-Allow-Headers: "'Authorization,Content-Type,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+      gatewayresponse.header.Access-Control-Allow-Credentials: "'true'"
+    responseTemplates:
+      application/json: |-
+        {
+          "message": "$context.error.validationErrorString",
+          "code":  "BadRequestBody"
+        }
+paths:
+  "/threat-designer/status/{id}":
+    get:
+      summary: Fetch Threat modeling statuses
+      description: Fetch Threat modeling status
+      tags:
+        - Security
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/mcp/status/{id}":
+    get:
+      summary: Fetch Threat modeling statuses (MCP)
+      description: |
+        Fetch Threat modeling status using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/restore/{id}":
+    put:
+      summary: Restore previous threat model
+      description: Restore previous threat model
+      tags:
+        - Security
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatModelResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/mcp/restore/{id}":
+    put:
+      summary: Restore previous threat model (MCP)
+      description: |
+        Restore previous threat model using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+        Note: Response does not include is_owner and access_level fields (JWT-only fields).
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatModelResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/trail/{id}":
+    get:
+      summary: Fetch Threat modeling reasoning trail
+      description: Fetch Threat modeling reasoning trail
+      tags:
+        - Security
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrailResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/mcp/trail/{id}":
+    get:
+      summary: Fetch Threat modeling reasoning trail (MCP)
+      description: |
+        Fetch Threat modeling reasoning trail using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrailResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/mcp/all":
+    get:
+      summary: Fetch all threat models for a given user (MCP)
+      description: |
+        Fetch threat models for a given user with pagination support using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+
+        Returns a paginated list of threat models (both owned and shared) sorted by creation date (newest first).
+        Use the cursor from the response to fetch subsequent pages.
+
+        Note: Response items do not include is_owner and access_level fields (JWT-only fields).
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [10, 20, 50, 100]
+            default: 20
+          description: Number of items per page (must be 10, 20, 50, or 100)
+          example: 20
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Base64-encoded pagination cursor from previous response.
+            Omit this parameter to fetch the first page.
+          example: "eyJvd25lZCI6ImJhc2U2NCIsInNoYXJlZCI6ImJhc2U2NCIsImZpbHRlciI6ImFsbCJ9"
+        - name: filter
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [owned, shared, all]
+            default: all
+          description: |
+            Filter results by ownership:
+            - owned: Only threat models owned by the user
+            - shared: Only threat models shared with the user
+            - all: Both owned and shared threat models
+          example: all
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/owned":
+    get:
+      summary: Fetch owned threat models with pagination
+      description: |
+        Fetch threat models owned by the authenticated user, sorted by timestamp descending (newest first).
+        Uses cursor-based pagination via the owner-timestamp-index GSI.
+      tags:
+        - Security
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [10, 20, 50, 100]
+            default: 20
+          description: Number of items per page (must be 10, 20, 50, or 100)
+          example: 20
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Base64-encoded pagination cursor from previous response.
+            Omit this parameter to fetch the first page.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/shared":
+    get:
+      summary: Fetch shared threat models with pagination
+      description: |
+        Fetch threat models shared with the authenticated user, sorted by sharing timestamp descending (newest first).
+        Uses cursor-based pagination via the user-timestamp-index GSI.
+        Each record is enriched with is_owner (false), access_level, and shared_by fields.
+      tags:
+        - Security
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [10, 20, 50, 100]
+            default: 20
+          description: Number of items per page (must be 10, 20, 50, or 100)
+          example: 20
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Base64-encoded pagination cursor from previous response.
+            Omit this parameter to fetch the first page.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer":
+    post:
+      summary: Submit Threat modeling
+      description: Submit Threat modeling
+      tags:
+        - Security
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateThreatModelRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateThreatModelResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/mcp":
+    post:
+      summary: Submit Threat modeling (MCP)
+      description: |
+        Submit Threat modeling using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateThreatModelRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateThreatModelResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/download":
+    post:
+      summary: Generates download presigned-url
+      description: Generates download presigned-url
+      tags:
+        - Security
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DownloadRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresignedUrlResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/mcp/download":
+    post:
+      summary: Generates download presigned-url (MCP)
+      description: |
+        Generates download presigned-url using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DownloadRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresignedUrlResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/download/batch":
+    post:
+      summary: Generate presigned URLs for multiple S3 locations
+      description: |
+        Generate presigned download URLs for multiple S3 locations in a single request.
+
+        This endpoint performs authorization checks for each S3 location, verifying that
+        the requesting user has at least READ_ONLY access to the associated threat model.
+
+        The response includes results for all requested locations, with presigned URLs
+        for authorized items and error indicators for unauthorized or invalid items.
+
+        Maximum batch size is 50 items.
+      tags:
+        - Security
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BatchDownloadRequest"
+            examples:
+              small_batch:
+                summary: Small batch request
+                value:
+                  s3_locations:
+                    - "550e8400-e29b-41d4-a716-446655440000"
+                    - "550e8400-e29b-41d4-a716-446655440001"
+                    - "550e8400-e29b-41d4-a716-446655440002"
+              max_batch:
+                summary: Maximum batch size (50 items)
+                value:
+                  s3_locations:
+                    - "550e8400-e29b-41d4-a716-446655440000"
+                    - "550e8400-e29b-41d4-a716-446655440001"
+      responses:
+        "200":
+          description: Batch request processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchDownloadResponse"
+              examples:
+                all_success:
+                  summary: All items authorized
+                  value:
+                    results:
+                      - s3_location: "550e8400-e29b-41d4-a716-446655440000"
+                        presigned_url: "https://s3.amazonaws.com/bucket/550e8400-e29b-41d4-a716-446655440000?..."
+                        success: true
+                      - s3_location: "550e8400-e29b-41d4-a716-446655440001"
+                        presigned_url: "https://s3.amazonaws.com/bucket/550e8400-e29b-41d4-a716-446655440001?..."
+                        success: true
+                partial_success:
+                  summary: Mixed authorized and unauthorized items
+                  value:
+                    results:
+                      - s3_location: "550e8400-e29b-41d4-a716-446655440000"
+                        presigned_url: "https://s3.amazonaws.com/bucket/550e8400-e29b-41d4-a716-446655440000?..."
+                        success: true
+                      - s3_location: "550e8400-e29b-41d4-a716-446655440001"
+                        error: "Unauthorized: You do not have access to this threat model"
+                        success: false
+                      - s3_location: "invalid-uuid"
+                        error: "Not Found: Threat model not found"
+                        success: false
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          description: Bad Request - Invalid batch size or malformed request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                empty_batch:
+                  summary: Empty s3_locations array
+                  value:
+                    code: "BadRequest"
+                    message: "s3_locations array cannot be empty"
+                batch_too_large:
+                  summary: Batch size exceeds limit
+                  value:
+                    code: "BadRequest"
+                    message: "Batch size exceeds maximum of 50 items"
+                missing_field:
+                  summary: Missing required field
+                  value:
+                    code: "BadRequest"
+                    message: "Missing required field: s3_locations"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/upload":
+    post:
+      summary: Generates presigned-url
+      description: Generates presigned-url
+      tags:
+        - Security
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresignedUrlResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/mcp/upload":
+    post:
+      summary: Generates presigned-url (MCP)
+      description: |
+        Generates presigned-url using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresignedUrlResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/{id}":
+    get:
+      summary: Fetch Threat modeling details
+      description: Fetch Threat modeling details
+      tags:
+        - Security
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatModelResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    put:
+      summary: Update Threat modeling
+      description: Update Threat modeling
+      tags:
+        - Security
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateThreatModelRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatModelItem"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
+        "409":
+          $ref: "#/components/responses/409"
+        "410":
+          $ref: "#/components/responses/410"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    delete:
+      summary: Delete Threat model
+      description: Delete Threat model
+      tags:
+        - Security
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+        - name: force_release
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: If true, forcefully releases any active lock before deletion
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/{id}/session/{session_id}":
+    delete:
+      summary: Stop threat model execution
+      description: Stop threat model execution
+      tags:
+        - Security
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Agent execution session identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/mcp/{id}":
+    get:
+      summary: Fetch Threat modeling details (MCP)
+      description: |
+        Fetch Threat modeling details using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+        Note: Response does not include is_owner and access_level fields (JWT-only fields).
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatModelResponse"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    put:
+      summary: Update Threat modeling (MCP)
+      description: |
+        Update Threat modeling using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+        Note: lock_token is not required for MCP users as they bypass lock mechanisms.
+        Note: Response does not include is_owner and access_level fields (JWT-only fields).
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateThreatModelRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThreatModelItem"
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
+        "409":
+          $ref: "#/components/responses/409"
+        "410":
+          $ref: "#/components/responses/410"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    delete:
+      summary: Delete Threat model (MCP)
+      description: |
+        Delete Threat model using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+        - name: force_release
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: If true, forcefully releases any active lock before deletion
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+  "/threat-designer/mcp/{id}/session/{session_id}":
+    delete:
+      summary: Stop threat model execution (MCP)
+      description: |
+        Stop threat model execution using MCP API key authentication.
+        This endpoint provides the same functionality as the JWT version.
+      tags:
+        - Security
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Agent execution session identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/{id}/share":
+    post:
+      summary: Share threat model with collaborators
+      description: Share a threat model with specific users and access levels
+      tags:
+        - Collaboration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShareThreatModelRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareOperationResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/{id}/collaborators":
+    get:
+      summary: Get collaborators for a threat model
+      description: Retrieve list of users who have access to this threat model
+      tags:
+        - Collaboration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollaboratorsResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/{id}/collaborators/{user_id}":
+    delete:
+      summary: Remove a collaborator
+      description: Remove a user's access to the threat model
+      tags:
+        - Collaboration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Cognito user identifier (sub)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareOperationResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    put:
+      summary: Update collaborator access level
+      description: Change a collaborator's access level
+      tags:
+        - Collaboration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Cognito user identifier (sub)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCollaboratorAccessRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareOperationResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/users":
+    get:
+      summary: List available users
+      description: Get list of Cognito users for sharing
+      tags:
+        - Collaboration
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter users by email prefix
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+          description: Maximum number of users to return
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsersResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/{id}/lock":
+    post:
+      summary: Acquire edit lock
+      description: Acquire an exclusive lock for editing a threat model
+      tags:
+        - Lock Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: Lock acquired successfully or lock already held by another user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockAcquireResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    delete:
+      summary: Release edit lock
+      description: Gracefully release an edit lock
+      tags:
+        - Lock Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LockTokenRequest"
+      responses:
+        "200":
+          description: Lock released successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockOperationResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/{id}/lock/heartbeat":
+    put:
+      summary: Refresh lock (heartbeat)
+      description: Update lock timestamp to maintain active lock
+      tags:
+        - Lock Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LockTokenRequest"
+      responses:
+        "200":
+          description: Lock refreshed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockOperationResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "410":
+          $ref: "#/components/responses/410"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/{id}/lock/status":
+    get:
+      summary: Get lock status
+      description: Check current lock status for a threat model
+      tags:
+        - Lock Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: Lock status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockStatusResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-designer/{id}/lock/force":
+    delete:
+      summary: Force release lock
+      description: Owner can force release any lock on their threat model
+      tags:
+        - Lock Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: Lock forcefully released
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LockOperationResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/attack-tree":
+    post:
+      summary: Initiate attack tree generation
+      description: |
+        Generate an attack tree for a specific threat.
+
+        The attack_tree_id is computed deterministically as a composite key from 
+        threat_model_id and threat_name in the format: {threat_model_id}_{normalized_threat_name}
+        where normalized_threat_name is lowercase with spaces replaced by underscores.
+
+        The attack_tree_id is NOT stored as a foreign key on the threat object - it is 
+        computed on-demand whenever needed.
+      tags:
+        - Attack Trees
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAttackTreeRequest"
+      responses:
+        "200":
+          description: Attack tree generation initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAttackTreeResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/attack-tree/{attack_tree_id}/status":
+    get:
+      summary: Get attack tree generation status
+      description: |
+        Poll the status of attack tree generation.
+
+        The attack_tree_id should be computed as a composite key: {threat_model_id}_{normalized_threat_name}
+      tags:
+        - Attack Trees
+      parameters:
+        - name: attack_tree_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Attack tree identifier
+      responses:
+        "200":
+          description: Status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttackTreeStatusResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/attack-tree/{attack_tree_id}":
+    get:
+      summary: Retrieve completed attack tree
+      description: |
+        Fetch a completed attack tree in React Flow format.
+
+        The attack_tree_id should be computed as a composite key: {threat_model_id}_{normalized_threat_name}
+      tags:
+        - Attack Trees
+      parameters:
+        - name: attack_tree_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Attack tree identifier
+      responses:
+        "200":
+          description: Attack tree retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttackTreeResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    put:
+      summary: Update attack tree
+      description: |
+        Update an existing attack tree with new data.
+
+        This endpoint validates the attack tree structure, checks for circular
+        dependencies, and persists the validated data to the database.
+
+        The attack_tree_id should be computed as a composite key: {threat_model_id}_{normalized_threat_name}
+      tags:
+        - Attack Trees
+      parameters:
+        - name: attack_tree_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Attack tree identifier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAttackTreeRequest"
+      responses:
+        "200":
+          description: Attack tree updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateAttackTreeResponse"
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    delete:
+      summary: Delete attack tree
+      description: |
+        Delete an attack tree.
+
+        Note: The attack_tree_id is NOT stored as a foreign key on threat objects,
+        so no foreign key cleanup is performed.
+      tags:
+        - Attack Trees
+      parameters:
+        - name: attack_tree_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            Attack tree identifier
+      responses:
+        "204":
+          description: Attack tree deleted successfully
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/threat-models/{threat_model_id}/attack-trees/metadata":
+    get:
+      summary: Get attack tree metadata for a threat model
+      description: |
+        Returns a list of threat names that have associated attack trees.
+
+        This endpoint queries for attack tree existence without loading full tree data,
+        enabling efficient filtering of threats in the catalog based on whether they
+        have attack trees.
+      tags:
+        - Attack Trees
+      parameters:
+        - name: threat_model_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Threat model identifier
+      responses:
+        "200":
+          description: Metadata retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttackTreeMetadataResponse"
+              examples:
+                with_trees:
+                  summary: Threat model with attack trees
+                  value:
+                    threat_model_id: "550e8400-e29b-41d4-a716-446655440000"
+                    threats_with_attack_trees:
+                      - "SQL Injection Attack"
+                      - "Cross-Site Scripting (XSS)"
+                      - "Denial of Service"
+                no_trees:
+                  summary: Threat model without attack trees
+                  value:
+                    threat_model_id: "550e8400-e29b-41d4-a716-446655440001"
+                    threats_with_attack_trees: []
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/spaces":
+    get:
+      summary: List spaces
+      description: List spaces owned by or shared with the authenticated user
+      tags:
+        - Spaces
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    post:
+      summary: Create a space
+      description: Create a new space
+      tags:
+        - Spaces
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/400"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/spaces/{space_id}":
+    get:
+      summary: Get a space
+      description: Get a space by ID
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    put:
+      summary: Update a space
+      description: Update a space by ID
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    delete:
+      summary: Delete a space
+      description: Delete a space by ID
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/spaces/{space_id}/documents/upload":
+    post:
+      summary: Generate document upload URL
+      description: Generate a presigned S3 URL to upload a document to a space
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/spaces/{space_id}/documents/confirm":
+    post:
+      summary: Confirm document upload
+      description: Confirm a document upload and trigger KB ingestion
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/spaces/{space_id}/documents":
+    get:
+      summary: List documents in a space
+      description: List all documents in a space
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/spaces/{space_id}/documents/{document_id}":
+    delete:
+      summary: Delete a document from a space
+      description: Delete a document from a space
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/spaces/{space_id}/share":
+    post:
+      summary: Share a space
+      description: Share a space with another user
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/spaces/{space_id}/sharing":
+    get:
+      summary: Get space sharing
+      description: Get the sharing configuration of a space
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+  "/spaces/{space_id}/sharing/{target_user_id}":
+    delete:
+      summary: Remove space sharing
+      description: Remove a user's access to a space
+      tags:
+        - Spaces
+      parameters:
+        - name: space_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: target_user_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+    options:
+      responses:
+        "200":
+          description: OK
+          headers:
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Credentials:
+              schema:
+                type: string
+      security: []
+      tags:
+        - CORS (Options)
+      x-amazon-apigateway-integration:
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri: "${lambda_arn}"
+        connectionType: "INTERNET"
+        contentHandling: CONVERT_TO_TEXT
+        passthroughBehavior: NEVER
+
+components:
+  schemas:
+    # Error Response Schemas
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+          description: Error message friendly enough to be presented on user interfaces
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Error code identifier
+        message:
+          type: string
+          description: Human-readable error message
+
+    ConflictErrorResponse:
+      allOf:
+        - $ref: "#/components/schemas/ErrorResponse"
+        - type: object
+          properties:
+            server_timestamp:
+              type: string
+              format: date-time
+              description: Server's last modification timestamp (for version conflicts)
+            client_timestamp:
+              type: string
+              format: date-time
+              description: Client's last known timestamp (for version conflicts)
+            server_state:
+              $ref: "#/components/schemas/ThreatModelItem"
+              description: Current server state (for version conflicts)
+
+    LockLostErrorResponse:
+      type: object
+      required:
+        - success
+        - message
+        - status_code
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+          description: Always false for error responses
+        message:
+          type: string
+          description: Human-readable error message
+        status_code:
+          type: integer
+          enum: [410]
+          description: HTTP status code
+        held_by:
+          type: string
+          format: uuid
+          description: User ID now holding the lock (optional)
+
+    # Nested Object Schemas
+    Asset:
+      type: object
+      required:
+        - type
+        - name
+        - description
+      properties:
+        type:
+          type: string
+          description: Type of asset (e.g., Database, API, Service)
+        name:
+          type: string
+          description: Name of the asset
+        description:
+          type: string
+          description: Description of the asset
+
+    Assets:
+      type: object
+      properties:
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/Asset"
+          description: List of system assets
+
+    Threat:
+      type: object
+      required:
+        - name
+        - stride_category
+        - description
+        - target
+        - impact
+        - likelihood
+      properties:
+        name:
+          type: string
+          description: Name of the threat
+        stride_category:
+          type: string
+          description: STRIDE category (Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege)
+        description:
+          type: string
+          description: Detailed description of the threat
+        target:
+          type: string
+          description: Asset or component being threatened
+        impact:
+          type: string
+          description: Potential impact of the threat
+        likelihood:
+          type: string
+          description: Likelihood of the threat occurring
+        mitigations:
+          type: array
+          items:
+            type: string
+          description: List of mitigation strategies
+        source:
+          type: string
+          description: Threat actor or source
+        prerequisites:
+          type: array
+          items:
+            type: string
+          description: Prerequisites for the threat to occur
+        vector:
+          type: string
+          description: Attack vector
+        starred:
+          type: boolean
+          description: Whether this threat is marked as important
+
+    ThreatList:
+      type: object
+      properties:
+        threats:
+          type: array
+          items:
+            $ref: "#/components/schemas/Threat"
+          description: List of identified threats
+
+    SystemArchitecture:
+      type: object
+      properties:
+        data_flows:
+          type: array
+          items:
+            type: object
+          description: Data flow definitions
+        trust_boundaries:
+          type: array
+          items:
+            type: object
+          description: Trust boundary definitions
+        threat_sources:
+          type: array
+          items:
+            type: object
+          description: Threat source definitions
+
+    # User and Collaborator Schemas
+    CollaboratorInput:
+      type: object
+      required:
+        - user_id
+        - access_level
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: Cognito user identifier (sub)
+        access_level:
+          type: string
+          enum: [READ_ONLY, EDIT]
+          description: Access level to grant
+
+    Collaborator:
+      type: object
+      required:
+        - user_id
+        - username
+        - access_level
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: Cognito user identifier (sub)
+        username:
+          type: string
+          description: Username of the collaborator
+        email:
+          type: string
+          format: email
+          description: Email address of the collaborator
+        name:
+          type: string
+          description: Full name of the collaborator
+        access_level:
+          type: string
+          enum: [READ_ONLY, EDIT]
+          description: Access level granted to the collaborator
+        shared_at:
+          type: string
+          format: date-time
+          description: When access was granted
+        shared_by:
+          type: string
+          format: uuid
+          description: User ID who granted access
+
+    CognitoUser:
+      type: object
+      required:
+        - user_id
+        - username
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: Cognito sub (UUID)
+        username:
+          type: string
+          description: Username
+        email:
+          type: string
+          format: email
+          description: Email address
+        name:
+          type: string
+          description: Full name
+        enabled:
+          type: boolean
+          description: Whether the user account is enabled
+        status:
+          type: string
+          description: User account status
+        email_verified:
+          type: boolean
+          description: Whether the email is verified
+
+    # Response Schemas for Collaboration Operations
+    CollaboratorsResponse:
+      type: object
+      required:
+        - collaborators
+      properties:
+        collaborators:
+          type: array
+          items:
+            $ref: "#/components/schemas/Collaborator"
+          description: List of users who have access to the threat model
+
+    UsersResponse:
+      type: object
+      required:
+        - users
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/CognitoUser"
+          description: List of available Cognito users
+
+    ShareOperationResponse:
+      type: object
+      required:
+        - success
+        - threat_model_id
+      properties:
+        success:
+          type: boolean
+          description: Whether the operation was successful
+        threat_model_id:
+          type: string
+          format: uuid
+          description: The threat model identifier
+        shared_count:
+          type: integer
+          description: Number of collaborators added (for share operation)
+        removed_user:
+          type: string
+          format: uuid
+          description: User ID that was removed (for remove operation)
+        user_id:
+          type: string
+          format: uuid
+          description: User ID that was updated (for update operation)
+        new_access_level:
+          type: string
+          enum: [READ_ONLY, EDIT]
+          description: New access level (for update operation)
+
+    # Threat Model Schemas
+    ThreatModelItem:
+      type: object
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: The threat model identifier
+        title:
+          type: string
+          description: Title of the threat model
+        state:
+          type: string
+          enum: [START, PENDING, PROCESSING, COMPLETE, FAILED]
+          description: Current state of the threat model
+        summary:
+          type: string
+          description: Summary of the threat model
+        description:
+          type: string
+          description: Description of the system being modeled
+        assumptions:
+          type: array
+          items:
+            type: string
+          description: List of assumptions about the system
+        assets:
+          $ref: "#/components/schemas/Assets"
+        system_architecture:
+          $ref: "#/components/schemas/SystemArchitecture"
+        threat_list:
+          $ref: "#/components/schemas/ThreatList"
+        owner:
+          type: string
+          format: uuid
+          description: User ID of the threat model owner
+        created_at:
+          type: string
+          format: date-time
+          description: When the threat model was created
+        last_modified_at:
+          type: string
+          format: date-time
+          description: When the threat model was last modified
+        last_modified_by:
+          type: string
+          format: uuid
+          description: User ID who last modified the threat model
+        is_owner:
+          type: boolean
+          description: True if requesting user is the owner (JWT users only)
+        access_level:
+          type: string
+          enum: [OWNER, EDIT, READ_ONLY]
+          description: User's access level (JWT users only)
+        s3_location:
+          type: string
+          description: S3 path to the architecture diagram
+        retry:
+          type: integer
+          description: Reasoning boost level used
+
+    CatalogItem:
+      type: object
+      required:
+        - job_id
+        - title
+        - state
+        - created_at
+        - owner
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: The threat model identifier
+        title:
+          type: string
+          description: Title of the threat model
+        state:
+          type: string
+          enum: [START, PENDING, PROCESSING, COMPLETE, FAILED]
+          description: Current state of the threat model
+        created_at:
+          type: string
+          format: date-time
+          description: When the threat model was created
+        owner:
+          type: string
+          format: uuid
+          description: User ID of the threat model owner
+        is_owner:
+          type: boolean
+          description: True if requesting user is the owner (JWT users only)
+        access_level:
+          type: string
+          enum: [OWNER, EDIT, READ_ONLY]
+          description: User's access level (JWT users only)
+        shared_by:
+          type: string
+          format: uuid
+          description: User ID who shared this threat model (only for shared items)
+
+    PaginationMetadata:
+      type: object
+      required:
+        - hasNextPage
+        - totalReturned
+      properties:
+        hasNextPage:
+          type: boolean
+          description: |
+            Indicates whether more results are available.
+            True if there are additional pages to fetch, false if this is the last page.
+          example: true
+        cursor:
+          type: string
+          nullable: true
+          description: |
+            Base64-encoded cursor for fetching the next page of results.
+            Pass this value as the 'cursor' query parameter in the next request.
+            Null when hasNextPage is false (no more results available).
+          example: "eyJvd25lZCI6ImJhc2U2NCIsInNoYXJlZCI6ImJhc2U2NCIsImZpbHRlciI6ImFsbCJ9"
+        totalReturned:
+          type: integer
+          minimum: 0
+          description: |
+            Number of items returned in the current page.
+            May be less than the requested limit on the last page.
+          example: 20
+
+    # Request Body Schemas
+    CreateThreatModelRequest:
+      type: object
+      required:
+        - s3_location
+        - iteration
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Optional UUID for the threat model. Generated if not provided or replay is false
+        title:
+          type: string
+          description: Title of the threat model
+        description:
+          type: string
+          description: Description of the system being modeled
+        assumptions:
+          type: array
+          items:
+            type: string
+          description: List of assumptions about the system
+        s3_location:
+          type: string
+          description: S3 path to the architecture diagram
+        iteration:
+          type: integer
+          description: Iteration number for the threat model generation
+        reasoning:
+          type: integer
+          minimum: 0
+          maximum: 3
+          default: 0
+          description: Reasoning boost level (0-3)
+        instructions:
+          type: string
+          description: Custom instructions for the agent
+        replay:
+          type: boolean
+          default: false
+          description: If true, replays an existing threat model with the provided id
+
+    UpdateThreatModelRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Title of the threat model
+        assets:
+          $ref: "#/components/schemas/Assets"
+        system_architecture:
+          $ref: "#/components/schemas/SystemArchitecture"
+        threat_list:
+          $ref: "#/components/schemas/ThreatList"
+        client_last_modified_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of client's last known modification time
+        lock_token:
+          type: string
+          format: uuid
+          description: Lock token obtained from acquiring a lock (required for JWT users)
+
+    ShareThreatModelRequest:
+      type: object
+      required:
+        - collaborators
+      properties:
+        collaborators:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollaboratorInput"
+          description: List of users to share with and their access levels
+
+    UpdateCollaboratorAccessRequest:
+      type: object
+      required:
+        - access_level
+      properties:
+        access_level:
+          type: string
+          enum: [READ_ONLY, EDIT]
+          description: New access level for the collaborator
+
+    LockTokenRequest:
+      type: object
+      required:
+        - lock_token
+      properties:
+        lock_token:
+          type: string
+          format: uuid
+          description: Lock token to validate
+
+    UploadRequest:
+      type: object
+      required:
+        - file_type
+      properties:
+        file_type:
+          type: string
+          default: image/png
+          description: MIME type of the file to upload
+
+    DownloadRequest:
+      type: object
+      required:
+        - s3_location
+      properties:
+        s3_location:
+          type: string
+          description: S3 path to the object to download
+
+    BatchDownloadRequest:
+      type: object
+      required:
+        - s3_locations
+      properties:
+        s3_locations:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          maxItems: 50
+          description: |
+            Array of S3 locations (threat model UUIDs) to generate presigned URLs for.
+            Minimum 1 item, maximum 50 items.
+          example:
+            - "550e8400-e29b-41d4-a716-446655440000"
+            - "550e8400-e29b-41d4-a716-446655440001"
+            - "550e8400-e29b-41d4-a716-446655440002"
+
+    # Response Schemas for Upload/Download Operations
+    PresignedUrlResponse:
+      type: object
+      required:
+        - presigned
+        - name
+      properties:
+        presigned:
+          type: string
+          format: uri
+          description: Presigned URL for upload/download
+        name:
+          type: string
+          description: S3 object key
+
+    DownloadResult:
+      type: object
+      required:
+        - s3_location
+        - success
+      properties:
+        s3_location:
+          type: string
+          description: The S3 location from the request
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        presigned_url:
+          type: string
+          format: uri
+          description: |
+            Presigned URL for downloading the object.
+            Present only when success is true.
+          example: "https://s3.amazonaws.com/bucket/550e8400-e29b-41d4-a716-446655440000?AWSAccessKeyId=..."
+        error:
+          type: string
+          description: |
+            Error message explaining why the presigned URL could not be generated.
+            Present only when success is false.
+          example: "Unauthorized: You do not have access to this threat model"
+        success:
+          type: boolean
+          description: |
+            Indicates whether the presigned URL was successfully generated.
+            True if presigned_url is present, false if error is present.
+          example: true
+
+    BatchDownloadResponse:
+      type: object
+      required:
+        - results
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/DownloadResult"
+          description: |
+            Array of results, one for each S3 location in the request.
+            Results are returned in the same order as the input s3_locations array.
+          example:
+            - s3_location: "550e8400-e29b-41d4-a716-446655440000"
+              presigned_url: "https://s3.amazonaws.com/bucket/550e8400-e29b-41d4-a716-446655440000?..."
+              success: true
+            - s3_location: "550e8400-e29b-41d4-a716-446655440001"
+              error: "Unauthorized: You do not have access to this threat model"
+              success: false
+
+    # Response Schemas for Threat Model Operations
+    CreateThreatModelResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The threat model identifier
+
+    ThreatModelResponse:
+      type: object
+      required:
+        - job_id
+        - state
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: The threat model identifier
+        state:
+          type: string
+          enum: [Found, Not Found]
+          description: Whether the threat model was found
+        item:
+          $ref: "#/components/schemas/ThreatModelItem"
+          description: Threat model data (null when state is Not Found)
+
+    StatusResponse:
+      type: object
+      required:
+        - id
+        - state
+        - retry
+        - session_id
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The threat model identifier
+        state:
+          type: string
+          enum: [START, PENDING, PROCESSING, COMPLETE, FAILED, Not Found]
+          description: Current execution state
+        retry:
+          type: integer
+          description: Reasoning boost level used for this execution
+        session_id:
+          type: string
+          format: uuid
+          description: Unique identifier for the agent execution session
+        execution_owner:
+          type: string
+          format: uuid
+          description: User ID who started this execution (optional)
+        detail:
+          type: string
+          description: Additional detail message about the state (optional)
+
+    CatalogResponse:
+      type: object
+      required:
+        - catalogs
+        - pagination
+      properties:
+        catalogs:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogItem"
+          description: List of threat models accessible to the user
+        pagination:
+          $ref: "#/components/schemas/PaginationMetadata"
+          description: Pagination information for navigating through results
+
+    DeleteResponse:
+      type: object
+      required:
+        - job_id
+        - state
+      properties:
+        job_id:
+          type: string
+          format: uuid
+          description: The threat model identifier
+        state:
+          type: string
+          enum: [Deleted, Restored]
+          description: Result of the delete or restore operation
+
+    TrailResponse:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The threat model identifier
+        assets:
+          type: string
+          description: Asset analysis reasoning trail
+        flows:
+          type: string
+          description: Data flow analysis reasoning trail
+        gaps:
+          type: array
+          items:
+            type: string
+          description: Gap analysis results
+        threats:
+          type: array
+          items:
+            type: string
+          description: Threat generation reasoning trail
+
+    # Response Schemas for Lock Operations
+    LockAcquireResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          description: Whether the lock was successfully acquired
+        message:
+          type: string
+          description: Human-readable message about the lock operation
+        lock_token:
+          type: string
+          format: uuid
+          description: Lock token (present when success is true)
+        acquired_at:
+          type: string
+          format: date-time
+          description: When the lock was acquired (present when success is true)
+        expires_at:
+          type: integer
+          description: Unix timestamp when lock expires (present when success is true)
+        held_by:
+          type: string
+          format: uuid
+          description: User ID holding the lock (present when success is false)
+        username:
+          type: string
+          description: Username of lock holder (present when success is false)
+        since:
+          type: string
+          format: date-time
+          description: When the lock was acquired by other user (present when success is false)
+        lock_timestamp:
+          type: integer
+          description: Unix timestamp of lock acquisition (present when success is false)
+
+    LockStatusResponse:
+      type: object
+      required:
+        - locked
+        - message
+      properties:
+        locked:
+          type: boolean
+          description: Whether the threat model is currently locked
+        message:
+          type: string
+          description: Human-readable message about the lock status
+        user_id:
+          type: string
+          format: uuid
+          description: User ID holding the lock (present when locked is true)
+        username:
+          type: string
+          description: Username of lock holder (present when locked is true)
+        lock_token:
+          type: string
+          format: uuid
+          description: Current lock token (present when locked is true)
+        since:
+          type: string
+          format: date-time
+          description: When the lock was acquired (present when locked is true)
+        lock_timestamp:
+          type: integer
+          description: Unix timestamp of lock acquisition (present when locked is true)
+        expires_at:
+          type: integer
+          description: Unix timestamp when lock expires (present when locked is true)
+        stale:
+          type: boolean
+          description: True if lock is stale (optional)
+
+    LockOperationResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          description: Whether the lock operation was successful
+        message:
+          type: string
+          description: Human-readable message about the lock operation
+        expires_at:
+          type: integer
+          description: Unix timestamp when lock expires (for refresh operations)
+        previous_holder:
+          type: string
+          format: uuid
+          description: User ID who previously held the lock (for force release)
+
+    # Attack Tree Schemas
+    CreateAttackTreeRequest:
+      type: object
+      required:
+        - threat_model_id
+        - threat_name
+        - threat_description
+      properties:
+        threat_model_id:
+          type: string
+          format: uuid
+          description: ID of the parent threat model
+        threat_name:
+          type: string
+          description: Name of the threat to generate attack tree for
+        threat_description:
+          type: string
+          description: Description of the threat
+        reasoning:
+          type: integer
+          minimum: 0
+          maximum: 3
+          default: 0
+          description: Reasoning boost level (0-3)
+
+    CreateAttackTreeResponse:
+      type: object
+      required:
+        - attack_tree_id
+        - status
+      properties:
+        attack_tree_id:
+          type: string
+          description: |
+            The attack tree identifier (composite key format: {threat_model_id}_{normalized_threat_name})
+            Example: abc123-def456-ghi789_sql_injection_attack
+        status:
+          type: string
+          enum: [in_progress, completed]
+          description: |
+            Initial status of attack tree generation.
+            Returns 'completed' if attack tree already exists, 'in_progress' if newly created.
+        message:
+          type: string
+          description: Optional message
+
+    AttackTreeStatusResponse:
+      type: object
+      required:
+        - attack_tree_id
+        - status
+      properties:
+        attack_tree_id:
+          type: string
+          description: |
+            The attack tree identifier (composite key format: {threat_model_id}_{normalized_threat_name})
+            Example: abc123-def456-ghi789_sql_injection_attack
+        status:
+          type: string
+          enum: [in_progress, completed, failed, not_found]
+          description: Current status of attack tree generation
+        detail:
+          type: string
+          description: Additional detail message about the status (optional)
+        error:
+          type: string
+          description: Error message if status is failed (optional)
+
+    AttackTreeNode:
+      type: object
+      required:
+        - id
+        - type
+        - data
+        - position
+      properties:
+        id:
+          type: string
+          description: Unique node identifier
+        type:
+          type: string
+          enum: [rootGoal, andGate, orGate, leafAttack]
+          description: Type of node in the attack tree
+        data:
+          type: object
+          description: Node-specific data (varies by node type)
+        position:
+          type: object
+          required:
+            - x
+            - y
+          properties:
+            x:
+              type: number
+              description: X coordinate
+            y:
+              type: number
+              description: Y coordinate
+
+    AttackTreeEdge:
+      type: object
+      required:
+        - id
+        - source
+        - target
+      properties:
+        id:
+          type: string
+          description: Unique edge identifier
+        source:
+          type: string
+          description: Source node ID
+        target:
+          type: string
+          description: Target node ID
+        type:
+          type: string
+          description: Edge type (optional)
+
+    AttackTreeData:
+      type: object
+      required:
+        - nodes
+        - edges
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttackTreeNode"
+          description: List of nodes in React Flow format
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttackTreeEdge"
+          description: List of edges in React Flow format
+
+    AttackTreeResponse:
+      type: object
+      required:
+        - attack_tree_id
+        - threat_model_id
+        - threat_name
+        - attack_tree
+      properties:
+        attack_tree_id:
+          type: string
+          description: |
+            The attack tree identifier (composite key format: {threat_model_id}_{normalized_threat_name})
+            Example: abc123-def456-ghi789_sql_injection_attack
+
+            Note: This ID is computed deterministically from threat_model_id and threat_name.
+            It is NOT stored as a foreign key on the threat object.
+        threat_model_id:
+          type: string
+          format: uuid
+          description: ID of the parent threat model
+        threat_name:
+          type: string
+          description: Name of the threat
+        created_at:
+          type: string
+          format: date-time
+          description: When the attack tree was created
+        attack_tree:
+          $ref: "#/components/schemas/AttackTreeData"
+          description: Attack tree data in React Flow format
+
+    UpdateAttackTreeRequest:
+      type: object
+      required:
+        - attack_tree
+      properties:
+        attack_tree:
+          $ref: "#/components/schemas/AttackTreeData"
+          description: Updated attack tree data in React Flow format
+      example:
+        attack_tree:
+          nodes:
+            - id: "node-1"
+              type: "root"
+              position:
+                x: 100
+                y: 100
+              data:
+                label: "Compromise System"
+            - id: "node-2"
+              type: "and-gate"
+              position:
+                x: 200
+                y: 200
+              data:
+                label: "Gain Access and Extract Data"
+                gateType: "AND"
+          edges:
+            - id: "edge-1"
+              source: "node-1"
+              target: "node-2"
+              type: "smoothstep"
+
+    UpdateAttackTreeResponse:
+      type: object
+      required:
+        - attack_tree_id
+        - updated_at
+        - message
+      properties:
+        attack_tree_id:
+          type: string
+          description: The attack tree identifier
+        updated_at:
+          type: string
+          format: date-time
+          description: When the attack tree was updated
+        message:
+          type: string
+          description: Success message
+          example: "Attack tree updated successfully"
+
+    AttackTreeMetadataResponse:
+      type: object
+      required:
+        - threat_model_id
+        - threats_with_attack_trees
+      properties:
+        threat_model_id:
+          type: string
+          format: uuid
+          description: The threat model identifier
+        threats_with_attack_trees:
+          type: array
+          items:
+            type: string
+          description: |
+            List of threat names that have associated attack trees.
+            Returns an empty array if no attack trees exist for this threat model.
+          example:
+            - "SQL Injection Attack"
+            - "Cross-Site Scripting (XSS)"
+            - "Denial of Service"
+  responses:
+    "400":
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+      description: Client Errors
+      headers:
+        Access-Control-Allow-Headers:
+          schema:
+            type: string
+        Access-Control-Allow-Origin:
+          schema:
+            type: string
+    "403":
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+      description: Forbidden - Insufficient permissions
+      headers:
+        Access-Control-Allow-Headers:
+          schema:
+            type: string
+        Access-Control-Allow-Origin:
+          schema:
+            type: string
+    "404":
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+      description: Not Found - Resource does not exist
+      headers:
+        Access-Control-Allow-Headers:
+          schema:
+            type: string
+        Access-Control-Allow-Origin:
+          schema:
+            type: string
+    "409":
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ConflictErrorResponse"
+      description: Conflict - Resource is locked or version conflict
+      headers:
+        Access-Control-Allow-Headers:
+          schema:
+            type: string
+        Access-Control-Allow-Origin:
+          schema:
+            type: string
+    "410":
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/LockLostErrorResponse"
+      description: Gone - Lock has been lost
+      headers:
+        Access-Control-Allow-Headers:
+          schema:
+            type: string
+        Access-Control-Allow-Origin:
+          schema:
+            type: string
+    "423":
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+      description: Locked - Resource is currently locked by another user
+      headers:
+        Access-Control-Allow-Headers:
+          schema:
+            type: string
+        Access-Control-Allow-Origin:
+          schema:
+            type: string
+    "500":
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+      description: Server Errors
+      headers:
+        Access-Control-Allow-Headers:
+          schema:
+            type: string
+        Access-Control-Allow-Origin:
+          schema:
+            type: string
+  securitySchemes:
+    LambdaAuthorizer:
+      type: apiKey
+      name: Authorization
+      in: header
+      x-amazon-apigateway-authtype: "custom"
+      x-amazon-apigateway-authorizer:
+        identitySource: "method.request.header.authorization"
+        authorizerUri: ${authorizer_arn}
+        authorizerResultTtlInSeconds: 0
+        type: token
+        authorizerPayloadFormatVersion: "1.0"
+    ApiKeyAuth:
+      type: apiKey
+      name: x-api-key
+      in: header

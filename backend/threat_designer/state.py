@@ -1,0 +1,676 @@
+"""Module containing state classes and data models for the threat designer application."""
+
+import functools
+import operator
+from datetime import datetime
+from langgraph.graph import MessagesState
+from typing import Annotated, List, Literal, Optional, TypedDict, Any
+
+from enum import Enum
+
+from constants import (
+    MITIGATION_MAX_ITEMS,
+    MITIGATION_MIN_ITEMS,
+    SUMMARY_MAX_WORDS_DEFAULT,
+    AssetType,
+    StrideCategory,
+)
+from pydantic import BaseModel, Field
+
+# Deferred import — only used as type hint for ConfigSchema
+_ChatBedrockConverse = None
+
+
+def _get_bedrock_converse():
+    global _ChatBedrockConverse
+    if _ChatBedrockConverse is None:
+        try:
+            from langchain_aws import ChatBedrockConverse as _CBC
+            _ChatBedrockConverse = _CBC
+        except ImportError:
+            _ChatBedrockConverse = Any
+    return _ChatBedrockConverse
+
+
+class ConfigSchema(TypedDict):
+    """Configuration schema for the workflow."""
+
+    model_assets: Any
+    model_flows: Any
+    model_threats: Any
+    model_gaps: Any
+    model_struct: Any
+    model_summary: Any
+    model_version: Any
+    model_version_diff: Any
+    model_space_context: Any
+    start_time: datetime
+    reasoning: bool
+
+
+class TaskStatus(str, Enum):
+    """Status of a version task section."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETE = "complete"
+
+
+class VersionTasks(TypedDict):
+    """Task checklist for version workflow sections."""
+
+    assets: TaskStatus
+    data_flows: TaskStatus
+    trust_boundaries: TaskStatus
+    threats: TaskStatus
+
+
+class VersionDiffResult(BaseModel):
+    """Structured output from the version diff node."""
+
+    diff: Annotated[
+        str,
+        Field(
+            description="Detailed description of architecture changes between the old and new diagrams"
+        ),
+    ]
+    proceed: Annotated[
+        bool,
+        Field(
+            description="True if the changes are suitable for incremental versioning. False only when the architectures are fundamentally different systems with little structural overlap."
+        ),
+    ]
+
+
+class SpaceInsightsList(BaseModel):
+    """Collection of space knowledge base insights for threat modeling context."""
+
+    insights: Annotated[
+        List[str],
+        Field(
+            description="List of insight strings extracted from the space knowledge base"
+        ),
+    ]
+
+
+class CaptureInsight(BaseModel):
+    """Tool schema for capturing a single space knowledge base insight."""
+
+    insight: Annotated[
+        str,
+        Field(
+            description="One crisp sentence (max 30 words) stating what the KB revealed and why it matters for this architecture's threat model."
+        ),
+    ]
+
+
+class SummaryState(BaseModel):
+    """Model representing the summary of a threat catalog."""
+
+    summary: Annotated[
+        str,
+        Field(
+            description=f"A short headline summary of max {SUMMARY_MAX_WORDS_DEFAULT} words"
+        ),
+    ]
+
+
+class Assets(BaseModel):
+    """Model representing system assets or entities in threat modeling."""
+
+    type: Annotated[
+        Literal[AssetType.ASSET.value, AssetType.ENTITY.value],
+        Field(
+            description=f"Type, one of {AssetType.ASSET.value} or {AssetType.ENTITY.value}"
+        ),
+    ]
+    name: Annotated[str, Field(description="The name of the asset")]
+    description: Annotated[
+        str, Field(description="The description of the asset or entity")
+    ]
+    criticality: Annotated[
+        Literal["Low", "Medium", "High"],
+        Field(description="Criticality level of the asset", default="Medium"),
+    ] = "Medium"
+
+
+class AssetsList(BaseModel):
+    """Collection of system assets for threat modeling."""
+
+    assets: Annotated[List[Assets], Field(description="The list of assets")]
+
+
+class DataFlow(BaseModel):
+    """Model representing data flow between entities in a system architecture."""
+
+    flow_description: Annotated[
+        str, Field(description="The description of the data flow")
+    ]
+    source_entity: Annotated[
+        str, Field(description="The source entity/asset of the data flow")
+    ]
+    target_entity: Annotated[
+        str, Field(description="The target entity/asset of the data flow")
+    ]
+
+
+class TrustBoundary(BaseModel):
+    """Model representing trust boundaries between entities in system architecture."""
+
+    purpose: Annotated[str, Field(description="The purpose of the trust boundary")]
+    source_entity: Annotated[
+        str, Field(description="The source entity/asset of the trust boundary")
+    ]
+    target_entity: Annotated[
+        str, Field(description="The target entity/asset of the trust boundary")
+    ]
+
+
+class GapFinding(BaseModel):
+    """A specific gap identified in the threat catalog."""
+
+    target: Annotated[
+        str,
+        Field(
+            description="The asset or component name where the gap exists. Must match an asset name from the architecture."
+        ),
+    ]
+    stride_category: Annotated[
+        Literal[*[category.value for category in StrideCategory]],
+        Field(
+            description="The STRIDE category that is missing or underrepresented for this target."
+        ),
+    ]
+    severity: Annotated[
+        Literal["CRITICAL", "MAJOR", "MINOR"],
+        Field(
+            description="CRITICAL = no coverage for a high-criticality asset/category, MAJOR = weak coverage, MINOR = calibration or quality issue."
+        ),
+    ]
+    description: Annotated[
+        str,
+        Field(
+            description="Actionable description of what is missing and why it matters. Max 40 words. Use imperative voice."
+        ),
+    ]
+
+
+class ContinueThreatModeling(BaseModel):
+    """Structured gap analysis result for threat modeling."""
+
+    stop: Annotated[
+        bool,
+        Field(
+            description="Should stop threat generation (True) if catalog is comprehensive, or continue (False) if gaps remain."
+        ),
+    ]
+    gaps: Annotated[
+        Optional[List[GapFinding]],
+        Field(
+            description="Specific gaps identified in the threat catalog, each tied to a target asset and STRIDE category. Required when 'stop' is False. Empty list when 'stop' is True."
+        ),
+    ] = []
+    rating: Annotated[
+        int,
+        Field(
+            description="Overall quality rating of the threat catalog (1-10). 10 = comprehensive and high quality, 1 = significant gaps and issues.",
+            ge=1,
+            le=10,
+        ),
+    ]
+
+
+class ThreatSource(BaseModel):
+    """Model representing sources of threats in the system."""
+
+    category: Annotated[str, Field(description="Actor Category")]
+    description: Annotated[
+        str,
+        Field(
+            description="One sentence describing their relevance to this architecture"
+        ),
+    ]
+    example: Annotated[str, Field(description="Brief list of 1-2 specific actor types")]
+
+
+class FlowsList(BaseModel):
+    """Collection of data flows, trust boundaries, and threat sources."""
+
+    data_flows: Annotated[List[DataFlow], Field(description="The list of data flows")]
+    trust_boundaries: Annotated[
+        List[TrustBoundary], Field(description="The list of trust boundaries")
+    ]
+    threat_sources: Annotated[
+        List[ThreatSource], Field(description="The list of threat actors")
+    ]
+
+
+class DataFlowsList(BaseModel):
+    """Input model for adding data flows via tools."""
+
+    data_flows: Annotated[List[DataFlow], Field(description="The list of data flows")]
+
+
+class TrustBoundariesList(BaseModel):
+    """Input model for adding trust boundaries via tools."""
+
+    trust_boundaries: Annotated[
+        List[TrustBoundary], Field(description="The list of trust boundaries")
+    ]
+
+
+class ThreatSourcesList(BaseModel):
+    """Input model for adding threat sources via tools."""
+
+    threat_sources: Annotated[
+        List[ThreatSource], Field(description="The list of threat sources")
+    ]
+
+
+class Threat(BaseModel):
+    """Model representing an identified security threat using the STRIDE methodology."""
+
+    name: Annotated[
+        str,
+        Field(
+            description="A concise, descriptive name for the threat that clearly identifies the security concern"
+        ),
+    ]
+    stride_category: Annotated[
+        Literal[*[category.value for category in StrideCategory]],
+        Field(
+            description=f"The STRIDE category classification: One of {', '.join([category.value for category in StrideCategory])}."
+        ),
+    ]
+    description: Annotated[
+        str,
+        Field(
+            description="Threat description which must follow threat grammar template format:"
+            "[threat source] [prerequisites] can [threat action] which leads to [threat impact], negatively impacting [impacted assets]."
+        ),
+    ]
+    target: Annotated[
+        str,
+        Field(
+            description="The specific asset, component, system, or data element that could be compromised by this threat. It must be only one entity, multiple ones will result in rejecting the threat"
+        ),
+    ]
+    impact: Annotated[
+        str,
+        Field(
+            description="The potential business, technical, or operational consequences if this threat is successfully exploited. Consider confidentiality, integrity, and availability impacts"
+        ),
+    ]
+    likelihood: Annotated[
+        Literal["Low", "Medium", "High"],
+        Field(
+            description="The probability of threat occurrence based on factors like attacker motivation, capability, opportunity, and existing controls"
+        ),
+    ]
+    mitigations: Annotated[
+        List[str],
+        Field(
+            description="Specific security controls, countermeasures, or design changes that can prevent, detect, or reduce the impact of this threat",
+            min_items=MITIGATION_MIN_ITEMS,
+            max_items=MITIGATION_MAX_ITEMS,
+        ),
+    ]
+    source: Annotated[
+        str,
+        Field(
+            description="The threat actor or agent who could execute this threat. Must match with the category field in threat_source ",
+        ),
+    ]
+    prerequisites: Annotated[
+        List[str],
+        Field(
+            description="Required conditions, access levels, knowledge, or system states that must exist for this threat to be viable",
+        ),
+    ]
+    vector: Annotated[
+        str,
+        Field(
+            description="The attack vector or pathway through which the threat could be delivered or executed",
+        ),
+    ]
+    starred: Annotated[
+        bool,
+        Field(
+            description="User-defined flag for prioritization or tracking. Ignored by automated threat modeling agents",
+        ),
+    ] = False
+    notes: Annotated[
+        Optional[str],
+        Field(
+            description="Reserved for user annotations. Do not read or write this field.",
+            default=None,
+        ),
+    ] = None
+
+
+class ThreatsList(BaseModel):
+    """Collection of identified security threats."""
+
+    threats: Annotated[List[Threat], Field(description="The list of threats")]
+
+    def __add__(self, other: "ThreatsList") -> "ThreatsList":
+        """Combine two ThreatsList instances, avoiding duplicates based on name."""
+        existing_names = {threat.name for threat in self.threats}
+        new_threats = [
+            threat for threat in other.threats if threat.name not in existing_names
+        ]
+        combined_threats = self.threats + new_threats
+        return ThreatsList(threats=combined_threats)
+
+    def remove(self, threat_name: str) -> "ThreatsList":
+        """Remove a threat by name and return a new ThreatsList instance."""
+        filtered_threats = [
+            threat for threat in self.threats if threat.name != threat_name
+        ]
+        return ThreatsList(threats=filtered_threats)
+
+
+@functools.lru_cache(maxsize=16)
+def create_constrained_threat_model(
+    asset_names: frozenset[str], source_categories: frozenset[str]
+) -> tuple[type[BaseModel], type[BaseModel]]:
+    """Create Threat and ThreatsList models with Literal-constrained target/source fields.
+
+    Uses pydantic.create_model() to dynamically override the `target` and `source`
+    fields with Literal types when valid values are available, falling back to str
+    when the respective set is empty.
+
+    Args:
+        asset_names: Set of valid asset names from state.assets.
+        source_categories: Set of valid threat source categories.
+
+    Returns:
+        Tuple of (DynamicThreat, DynamicThreatsList) model classes.
+    """
+    from pydantic import create_model
+
+    field_overrides = {}
+
+    if asset_names:
+        target_literal = Literal[tuple(sorted(asset_names))]
+        field_overrides["target"] = (
+            Annotated[
+                target_literal,
+                Field(
+                    description="The specific asset that could be compromised by this threat. Must exactly match one of the allowed values."
+                ),
+            ],
+            ...,
+        )
+
+    if source_categories:
+        source_literal = Literal[tuple(sorted(source_categories))]
+        field_overrides["source"] = (
+            Annotated[
+                source_literal,
+                Field(
+                    description="The threat actor category. Must exactly match one of the allowed values."
+                ),
+            ],
+            ...,
+        )
+
+    DynamicThreat = create_model("Threat", __base__=Threat, **field_overrides)
+
+    DynamicThreatsList = create_model(
+        "ThreatsList",
+        __base__=ThreatsList,
+        threats=(
+            Annotated[List[DynamicThreat], Field(description="The list of threats")],
+            ...,
+        ),
+    )
+
+    return DynamicThreat, DynamicThreatsList
+
+
+class AgentState(TypedDict):
+    """Container for the internal state of the threat modeling agent."""
+
+    summary: Optional[str] = None
+    assets: Optional[AssetsList] = None
+    image_data: Optional[str] = None
+    image_type: Optional[str] = None
+    system_architecture: Optional[FlowsList] = None
+    description: Optional[str] = None
+    assumptions: Optional[List[str]] = None
+    improvement: Optional[str] = None
+    next_step: Optional[str] = None
+    threat_list: Annotated[ThreatsList, operator.add]
+    job_id: Optional[str] = None
+    retry: Optional[int] = 1
+    iteration: Optional[int] = 0
+    s3_location: Optional[str]
+    title: Optional[str] = None
+    owner: Optional[str] = None
+    stop: Optional[bool] = False
+    replay: Optional[bool] = False
+    instructions: Optional[str] = None
+    application_type: Optional[str] = "hybrid"
+    space_id: Optional[str] = None
+    space_insights: Optional[SpaceInsightsList] = None
+    token_usage: Optional[dict] = None
+    version: Optional[bool] = False
+    architecture_diff: Optional[str] = None
+    architecture_diagram_text: Optional[str] = None
+    previous_architecture_diagram_text: Optional[str] = None
+    previous_image_data: Optional[str] = None
+    version_tasks: Optional[VersionTasks] = None
+    parent_id: Optional[str] = None
+    mirror_attack_trees: Optional[bool] = False
+
+
+def _add_or_overwrite(left, right):
+    """Reducer that adds deltas or replaces with Overwrite.
+
+    Tools send deltas (+1, +2) for increments, or Overwrite(value) for resets.
+    """
+    from langgraph.types import Overwrite
+
+    # If right is Overwrite, use its value (explicit replacement like reset to 0)
+    if isinstance(right, Overwrite):
+        return right.value
+    # If left is Overwrite, use right
+    if isinstance(left, Overwrite):
+        return right
+    # Otherwise add the delta
+    return left + right
+
+
+def _overwrite_or_last(left, right):
+    """Reducer for boolean flags that respects Overwrite."""
+    from langgraph.types import Overwrite
+
+    if isinstance(right, Overwrite):
+        return right.value
+    if isinstance(left, Overwrite):
+        return right
+    return right
+
+
+class ThreatState(MessagesState):
+    """Container for the internal state of the threats subgraph."""
+
+    threat_list: Annotated[ThreatsList, operator.add]
+    tool_use: Annotated[int, _add_or_overwrite] = 0
+    gap_tool_use: Annotated[int, _add_or_overwrite] = 0
+    threats_agent_rounds: Annotated[int, _add_or_overwrite] = 0
+    assets: Optional[AssetsList] = None
+    image_data: Optional[str] = None
+    image_type: Optional[str] = None
+    system_architecture: Optional[FlowsList] = None
+    description: Optional[str] = None
+    assumptions: Optional[List[str]] = None
+    gap: Annotated[List[str], operator.add] = []
+    instructions: Optional[str] = None
+    job_id: Optional[str] = None
+    retry: Optional[int] = 1
+    iteration: Optional[int] = 0
+    replay: Optional[bool] = False
+    application_type: Optional[str] = "hybrid"
+    space_insights: Optional[SpaceInsightsList] = None
+    architecture_diagram_text: Optional[str] = None
+    force_finish_threats: Optional[bool] = False
+
+
+def _merge_flows_list(left, right):
+    """Reducer that merges FlowsList deltas or replaces with Overwrite.
+
+    Tools send deltas (FlowsList with partial lists) for additions,
+    or Overwrite(FlowsList) for replacements (e.g., after deletions).
+    """
+    from langgraph.types import Overwrite
+
+    if isinstance(right, Overwrite):
+        return right.value
+    if isinstance(left, Overwrite):
+        return right
+    if left is None:
+        return right
+    if right is None:
+        return left
+
+    # Merge by concatenating lists
+    return FlowsList(
+        data_flows=left.data_flows + right.data_flows,
+        trust_boundaries=left.trust_boundaries + right.trust_boundaries,
+        threat_sources=left.threat_sources + right.threat_sources,
+    )
+
+
+class FlowsState(MessagesState):
+    """Container for the internal state of the flows subgraph."""
+
+    flows_list: Annotated[Optional[FlowsList], _merge_flows_list] = None
+    tool_use: Annotated[int, _add_or_overwrite] = 0
+    flows_agent_rounds: Annotated[int, _add_or_overwrite] = 0
+    assets: Optional[AssetsList] = None
+    image_data: Optional[str] = None
+    image_type: Optional[str] = None
+    description: Optional[str] = None
+    assumptions: Optional[List[str]] = None
+    instructions: Optional[str] = None
+    job_id: Optional[str] = None
+    iteration: Optional[int] = 0
+    application_type: Optional[str] = "hybrid"
+    space_insights: Optional[SpaceInsightsList] = None
+    architecture_diagram_text: Optional[str] = None
+    force_finish_flows: Optional[bool] = False
+
+
+class VersionState(MessagesState):
+    """Container for the internal state of the version subgraph."""
+
+    threat_list: Annotated[ThreatsList, operator.add]
+    assets: Optional[AssetsList] = None
+    system_architecture: Optional[FlowsList] = None
+    description: Optional[str] = None
+    assumptions: Optional[List[str]] = None
+    job_id: Optional[str] = None
+    architecture_diff: Optional[str] = None
+    version_proceed: Optional[bool] = True
+    version_tasks: Optional[VersionTasks] = None
+    image_data: Optional[str] = None
+    image_type: Optional[str] = None
+    previous_image_data: Optional[str] = None
+    architecture_diagram_text: Optional[str] = None
+    previous_architecture_diagram_text: Optional[str] = None
+    application_type: Optional[str] = "hybrid"
+    space_insights: Optional[SpaceInsightsList] = None
+    trail_msg_idx: Optional[int] = 0
+
+
+class SpaceContextState(MessagesState):
+    """Container for the internal state of the space context subgraph."""
+
+    space_id: str
+    kb_query_count: Annotated[int, _add_or_overwrite] = 0
+    space_insights: Optional[SpaceInsightsList] = None
+    image_data: Optional[str] = None
+    image_type: Optional[str] = None
+    description: Optional[str] = None
+    assumptions: Optional[List[str]] = None
+    summary: Optional[str] = None
+    job_id: Optional[str] = None
+    architecture_diagram_text: Optional[str] = None
+
+
+@functools.lru_cache(maxsize=16)
+def create_constrained_flow_models(
+    asset_names: frozenset[str],
+) -> tuple[type[BaseModel], type[BaseModel], type[BaseModel], type[BaseModel]]:
+    """Create DataFlow, TrustBoundary, DataFlowsList, and TrustBoundariesList models
+    with Literal-constrained entity fields.
+
+    Args:
+        asset_names: Set of valid asset names from state.assets.
+
+    Returns:
+        Tuple of (DynDataFlow, DynTrustBoundary, DynDataFlowsList, DynTrustBoundariesList).
+    """
+    from pydantic import create_model
+
+    entity_literal = Literal[tuple(sorted(asset_names))]
+
+    DynDataFlow = create_model(
+        "DataFlow",
+        __base__=DataFlow,
+        source_entity=(
+            Annotated[
+                entity_literal,
+                Field(
+                    description="The source entity/asset of the data flow. Must exactly match one of the allowed values."
+                ),
+            ],
+            ...,
+        ),
+        target_entity=(
+            Annotated[
+                entity_literal,
+                Field(
+                    description="The target entity/asset of the data flow. Must exactly match one of the allowed values."
+                ),
+            ],
+            ...,
+        ),
+    )
+
+    DynTrustBoundary = create_model(
+        "TrustBoundary",
+        __base__=TrustBoundary,
+        source_entity=(
+            Annotated[
+                entity_literal,
+                Field(
+                    description="The source entity/asset of the trust boundary. Must exactly match one of the allowed values."
+                ),
+            ],
+            ...,
+        ),
+        target_entity=(
+            Annotated[
+                entity_literal,
+                Field(
+                    description="The target entity/asset of the trust boundary. Must exactly match one of the allowed values."
+                ),
+            ],
+            ...,
+        ),
+    )
+
+    class DataFlowsList(BaseModel):
+        data_flows: Annotated[
+            List[DynDataFlow], Field(description="The list of data flows")
+        ]
+
+    class TrustBoundariesList(BaseModel):
+        trust_boundaries: Annotated[
+            List[DynTrustBoundary], Field(description="The list of trust boundaries")
+        ]
+
+    return DynDataFlow, DynTrustBoundary, DataFlowsList, TrustBoundariesList

@@ -1,0 +1,390 @@
+"""
+Centralized constants for the Threat Designer module.
+
+This module contains all constants used throughout the threat modeling system,
+organized by logical categories for better maintainability and consistency.
+"""
+
+import os
+from enum import Enum
+from typing import Dict, List
+
+
+def _env_int_bounded(name: str, default: int, *, min_v: int, max_v: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        v = int(str(raw).strip(), 10)
+        return max(min_v, min(max_v, v))
+    except ValueError:
+        return default
+
+
+def _env_int_nonneg(name: str, default: int, *, max_v: int = 100_000) -> int:
+    """Non-negative int; default often 0 meaning unlimited for agent-round caps."""
+    raw = os.environ.get(name)
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        v = int(str(raw).strip(), 10)
+        return max(0, min(max_v, v))
+    except ValueError:
+        return default
+
+# ============================================================================
+# ENVIRONMENT VARIABLE NAMES
+# ============================================================================
+
+# Environment variable names used throughout the application
+ENV_AGENT_STATE_TABLE = "AGENT_STATE_TABLE"
+ENV_MODEL = "MODEL"
+ENV_AWS_REGION = "AWS_REGION"
+ENV_REGION = "REGION"
+ENV_ARCHITECTURE_BUCKET = "ARCHITECTURE_BUCKET"
+ENV_JOB_STATUS_TABLE = "JOB_STATUS_TABLE"
+ENV_AGENT_TRAIL_TABLE = "AGENT_TRAIL_TABLE"
+ENV_ATTACK_TREE_TABLE = "ATTACK_TREE_TABLE"
+ENV_LOG_LEVEL = "LOG_LEVEL"
+ENV_TRACEBACK_ENABLED = "TRACEBACK_ENABLED"
+
+
+# Model configuration environment variables
+ENV_MAIN_MODEL = "MAIN_MODEL"
+ENV_MODEL_STRUCT = "MODEL_STRUCT"
+ENV_MODEL_SUMMARY = "MODEL_SUMMARY"
+ENV_ADAPTIVE_THINKING_MODELS = "ADAPTIVE_THINKING_MODELS"
+ENV_MODELS_SUPPORTING_MAX = "MODELS_SUPPORTING_MAX"
+
+# Model provider configuration
+ENV_MODEL_PROVIDER = "MODEL_PROVIDER"
+MODEL_PROVIDER_BEDROCK = "bedrock"
+MODEL_PROVIDER_OPENAI = "openai"
+MODEL_PROVIDER_OPENROUTER = "openrouter"
+MODEL_PROVIDER_FIREWORKS = "fireworks"
+ENV_OPENAI_API_KEY = "OPENAI_API_KEY"
+ENV_FIREWORKS_API_KEY = "FIREWORKS_API_KEY"
+ENV_FIREWORKS_BASE_URL = "FIREWORKS_BASE_URL"
+FIREWORKS_BASE_URL_DEFAULT = "https://api.fireworks.ai/inference/v1"
+ENV_OPENROUTER_API_KEY = "OPENROUTER_API_KEY"
+ENV_OPENROUTER_BASE_URL = "OPENROUTER_BASE_URL"
+ENV_OPENROUTER_HTTP_REFERER = "OPENROUTER_HTTP_REFERER"
+ENV_OPENROUTER_SITE_TITLE = "OPENROUTER_SITE_TITLE"
+ENV_OPENROUTER_REASONING_ENABLED = "OPENROUTER_REASONING_ENABLED"
+OPENROUTER_BASE_URL_DEFAULT = "https://openrouter.ai/api/v1"
+
+# Tunable workflow limits (optional env overrides for faster runs)
+ENV_THREAT_DESIGNER_MIN_GAP_THRESHOLD = "THREAT_DESIGNER_MIN_GAP_THRESHOLD"
+ENV_THREAT_DESIGNER_MAX_ADD_THREATS_USES = "THREAT_DESIGNER_MAX_ADD_THREATS_USES"
+ENV_THREAT_DESIGNER_MAX_GAP_ANALYSIS_USES = "THREAT_DESIGNER_MAX_GAP_ANALYSIS_USES"
+ENV_THREAT_DESIGNER_MAX_AGENT_ROUNDS_FLOWS = "THREAT_DESIGNER_MAX_AGENT_ROUNDS_FLOWS"
+ENV_THREAT_DESIGNER_MAX_AGENT_ROUNDS_THREATS = "THREAT_DESIGNER_MAX_AGENT_ROUNDS_THREATS"
+ENV_THREAT_DESIGNER_STDOUT_LLM_CALLS = "THREAT_DESIGNER_STDOUT_LLM_CALLS"
+
+
+# ============================================================================
+# DEFAULT VALUES
+# ============================================================================
+
+# AWS configuration defaults
+DEFAULT_REGION = "us-west-2"
+DEFAULT_TIMEOUT = 1000
+
+# Model configuration defaults
+DEFAULT_MAX_RETRY = 10
+DEFAULT_MAX_EXECUTION_TIME_MINUTES = 12
+DEFAULT_SUMMARY_MAX_WORDS = 40
+
+# Validation defaults
+DEFAULT_MIN_RETRY = 1
+DEFAULT_MAX_RETRY_LIMIT = 50
+DEFAULT_MIN_EXECUTION_TIME = 1
+DEFAULT_MAX_EXECUTION_TIME = 60
+DEFAULT_MIN_SUMMARY_WORDS = 10
+DEFAULT_MAX_SUMMARY_WORDS = 100
+
+
+# ============================================================================
+# MODEL CONFIGURATION
+# ============================================================================
+
+# Stop sequences for model generation
+STOP_SEQUENCES: List[str] = ["Human:", "User:", "Assistant:"]
+
+# Model temperature settings
+MODEL_TEMPERATURE_DEFAULT = 0
+MODEL_TEMPERATURE_REASONING = 1
+
+
+# ============================================================================
+# PROMPT CONFIGURATION
+# ============================================================================
+
+# Mitigation constraints
+MITIGATION_MIN_ITEMS = 2
+MITIGATION_MAX_ITEMS = 5
+
+# Summary configuration
+SUMMARY_MAX_WORDS_DEFAULT = 40
+
+# Tool usage limits
+# These limits work together to enforce iterative threat catalog refinement:
+#
+# MAX_ADD_THREATS_USES: Maximum number of times add_threats can be called before
+# requiring gap_analysis validation. When this limit is reached, the agent must
+# call gap_analysis to verify the threat catalog's completeness before continuing.
+# This counter is RESET to 0 each time gap_analysis is successfully invoked,
+# allowing the agent to add more threats after validation.
+#
+# MAX_GAP_ANALYSIS_USES: Maximum number of times gap_analysis can be called during
+# a threat modeling session. This limit prevents excessive gap analysis cycles and
+# ensures the agent makes progress toward completion. Unlike add_threats, this
+# counter is NOT reset and accumulates throughout the entire session.
+#
+# Relationship: These limits create a validation cycle where the agent must
+# periodically validate the threat catalog (via gap_analysis) before continuing
+# to add threats. The theoretical maximum threats that can be added is:
+# MAX_ADD_THREATS_USES * (MAX_GAP_ANALYSIS_USES + 1)
+# Example: 10 * (3 + 1) = 40 total add_threats calls possible
+#
+# When both limits are exhausted, the agent can only delete threats or finish.
+_MAX_ADD_THREATS_DEFAULT = 5
+_MAX_GAP_ANALYSIS_DEFAULT = 5
+_MIN_GAP_THRESHOLD_DEFAULT = 25
+
+MAX_ADD_THREATS_USES = _env_int_bounded(
+    ENV_THREAT_DESIGNER_MAX_ADD_THREATS_USES,
+    _MAX_ADD_THREATS_DEFAULT,
+    min_v=1,
+    max_v=50,
+)
+MAX_GAP_ANALYSIS_USES = _env_int_bounded(
+    ENV_THREAT_DESIGNER_MAX_GAP_ANALYSIS_USES,
+    _MAX_GAP_ANALYSIS_DEFAULT,
+    min_v=1,
+    max_v=20,
+)
+MIN_GAP_THRESHOLD = _env_int_bounded(
+    ENV_THREAT_DESIGNER_MIN_GAP_THRESHOLD,
+    _MIN_GAP_THRESHOLD_DEFAULT,
+    min_v=1,
+    max_v=500,
+)
+
+# ReAct agent round caps (0 = unlimited). Prevents pathological multi-hour runs.
+WORKFLOW_MAX_AGENT_ROUNDS_FLOWS = _env_int_nonneg(
+    ENV_THREAT_DESIGNER_MAX_AGENT_ROUNDS_FLOWS, 0
+)
+WORKFLOW_MAX_AGENT_ROUNDS_THREATS = _env_int_nonneg(
+    ENV_THREAT_DESIGNER_MAX_AGENT_ROUNDS_THREATS, 0
+)
+
+
+# ============================================================================
+# JOB STATES (ENUM)
+# ============================================================================
+
+
+class JobState(Enum):
+    """Enumeration of possible job states in the threat modeling workflow."""
+
+    SPACE_CONTEXT = "SPACE_CONTEXT"
+    ASSETS = "ASSETS"
+    FLOW = "FLOW"
+    THREAT = "THREAT"
+    THREAT_RETRY = "THREAT_RETRY"
+    ATTACK_TREE = "ATTACK_TREE"
+    VERSION_DIFF = "VERSION_DIFF"
+    VERSION_ASSETS = "VERSION_ASSETS"
+    VERSION_FLOWS = "VERSION_FLOWS"
+    VERSION_BOUNDARIES = "VERSION_BOUNDARIES"
+    VERSION_THREATS = "VERSION_THREATS"
+    FINALIZE = "FINALIZE"
+    COMPLETE = "COMPLETE"
+    FAILED = "FAILED"
+
+
+# ============================================================================
+# STRIDE CATEGORIES (ENUM)
+# ============================================================================
+
+
+class StrideCategory(Enum):
+    """STRIDE threat modeling categories for type-safe threat classification."""
+
+    SPOOFING = "Spoofing"
+    TAMPERING = "Tampering"
+    REPUDIATION = "Repudiation"
+    INFORMATION_DISCLOSURE = "Information Disclosure"
+    DENIAL_OF_SERVICE = "Denial of Service"
+    ELEVATION_OF_PRIVILEGE = "Elevation of Privilege"
+
+
+# ============================================================================
+# ASSET AND ENTITY TYPES
+# ============================================================================
+
+
+class AssetType(Enum):
+    """Types of assets and entities in threat modeling."""
+
+    ASSET = "Asset"
+    ENTITY = "Entity"
+
+
+# ============================================================================
+# DATABASE FIELD NAMES
+# ============================================================================
+
+# DynamoDB field names for consistency
+DB_FIELD_JOB_ID = "job_id"
+DB_FIELD_ID = "id"
+DB_FIELD_STATE = "state"
+DB_FIELD_TIMESTAMP = "updated_at"
+DB_FIELD_RETRY = "retry"
+DB_FIELD_ASSETS = "assets"
+DB_FIELD_FLOWS = "flows"
+DB_FIELD_THREATS = "threats"
+DB_FIELD_GAPS = "gap"
+DB_FIELD_SPACE_CONTEXT = "space_context"
+DB_FIELD_BACKUP = "backup"
+
+
+# ============================================================================
+# ERROR MESSAGES
+# ============================================================================
+
+# Common error message templates
+ERROR_MISSING_ENV_VAR = "Environment variable not set"
+ERROR_MODEL_INIT_FAILED = "Model initialization failed"
+ERROR_DYNAMODB_OPERATION_FAILED = "DynamoDB operation failed"
+ERROR_S3_OPERATION_FAILED = "S3 operation failed"
+ERROR_VALIDATION_FAILED = "Request validation failed"
+ERROR_MISSING_REQUIRED_FIELDS = "Missing required fields"
+ERROR_INVALID_REASONING_VALUE = "Reasoning must be 0 or 1"
+ERROR_INVALID_REASONING_TYPE = "Invalid reasoning parameter"
+
+
+# ============================================================================
+# HTTP STATUS CODES
+# ============================================================================
+
+HTTP_STATUS_BAD_REQUEST = 400
+HTTP_STATUS_UNPROCESSABLE_ENTITY = 422
+HTTP_STATUS_INTERNAL_SERVER_ERROR = 500
+
+
+# ============================================================================
+# REASONING CONFIGURATION
+# ============================================================================
+
+# Valid reasoning levels
+REASONING_DISABLED = 0
+REASONING_ENABLED = [1, 2, 3, 4]
+VALID_REASONING_VALUES = [REASONING_DISABLED, *REASONING_ENABLED]
+
+# Reasoning model configuration
+REASONING_THINKING_TYPE = "enabled"
+REASONING_BUDGET_FIELD = "budget_tokens"
+
+# Adaptive thinking configuration
+ADAPTIVE_THINKING_TYPE = "adaptive"
+ADAPTIVE_EFFORT_MAP: Dict[int, str] = {1: "low", 2: "medium", 3: "high", 4: "max"}
+
+# OpenAI reasoning effort mapping for mini models
+OPENAI_REASONING_EFFORT_MAP_MINI: Dict[int, str] = {
+    0: "minimal",
+    1: "low",
+    2: "medium",
+    3: "high",
+    4: "xhigh",
+}
+
+# OpenAI reasoning effort mapping for standard models
+OPENAI_REASONING_EFFORT_MAP_STANDARD: Dict[int, str] = {
+    0: "minimal",
+    1: "minimal",
+    2: "low",
+    3: "low",
+    4: "xhigh",
+}
+
+# Known GPT-5 family models that support reasoning
+OPENAI_GPT5_FAMILY_MODELS: List[str] = [
+    "gpt-5.2-2025-12-11",
+    "gpt-5.1-2025-11-13",
+    "gpt-5-2025-08-07",
+    "gpt-5-mini-2025-08-07",
+    "gpt-5.4-2026-03-05",
+]
+
+
+# ============================================================================
+# FLUSH MODES FOR TRAIL UPDATES
+# ============================================================================
+
+FLUSH_MODE_REPLACE = 0
+FLUSH_MODE_APPEND = 1
+
+
+# ============================================================================
+# AWS SERVICE NAMES
+# ============================================================================
+
+AWS_SERVICE_BEDROCK_RUNTIME = "bedrock-runtime"
+AWS_SERVICE_DYNAMODB = "dynamodb"
+AWS_SERVICE_S3 = "s3"
+
+
+# ============================================================================
+# VALIDATION CONSTRAINTS
+# ============================================================================
+
+# Retry validation
+MIN_RETRY_COUNT = 1
+MAX_RETRY_COUNT = 50
+
+# Execution time validation (minutes)
+MIN_EXECUTION_TIME_MINUTES = 1
+MAX_EXECUTION_TIME_MINUTES = 60
+
+# Summary word count validation
+MIN_SUMMARY_WORDS = 10
+MAX_SUMMARY_WORDS = 100
+
+# Reasoning level validation
+MIN_REASONING_LEVEL = 0
+MAX_REASONING_LEVEL = 4
+
+
+# ============================================================================
+# WORKFLOW CONFIGURATION
+# ============================================================================
+
+# Workflow node names
+WORKFLOW_NODE_IMAGE_TO_BASE64 = "image_to_base64"
+WORKFLOW_NODE_SPACE_CONTEXT = "space_context"
+WORKFLOW_NODE_ASSET = "asset"
+WORKFLOW_NODE_FLOWS = "flows"
+WORKFLOW_NODE_THREATS_TRADITIONAL = "threats_traditional"
+WORKFLOW_NODE_THREATS_AGENTIC = "threats_agentic"
+WORKFLOW_NODE_VERSION_DIFF = "version_diff"
+WORKFLOW_NODE_VERSION_AGENT = "version_agent"
+WORKFLOW_NODE_FINALIZE = "finalize"
+
+# Space context knowledge base query budget
+KB_QUERY_BUDGET = 10
+
+# Maximum number of space insights to capture before moving on
+MAX_SPACE_INSIGHTS = 20
+
+# ============================================================================
+# SLEEP INTERVALS
+# ============================================================================
+
+# Sleep time in seconds for workflow finalization
+FINALIZATION_SLEEP_SECONDS = 3
+
+
+# Maximum execution time for attack tree generation (5 minutes)
+MAX_EXECUTION_TIME_SECONDS = 900

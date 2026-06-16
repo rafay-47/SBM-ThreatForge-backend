@@ -1,0 +1,6 @@
+boto3==1.40.64
+aws-lambda-powertools==2.44.0
+pydantic>=2,<3
+psycopg2-binary>=2.9.9
+pypdf>=5.0.0
+openai>=1.40.0

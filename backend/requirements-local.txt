@@ -1,0 +1,69 @@
+# ============================================================
+# Threat Designer — Local Development Dependencies
+# ============================================================
+# Install with: pip install -r requirements-local.txt
+#
+# This file lists ONLY the packages needed to run the backend
+# locally with Supabase + OpenAI/OpenRouter/Ollama (no AWS packages).
+# ============================================================
+
+# Core framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0
+pydantic-settings>=2.10.1
+
+# LangGraph (agent workflows)
+langgraph>=1.0.0
+langgraph-checkpoint>=2.0.0
+
+# LangChain core (NOT langchain-aws)
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+langchain-tavily>=0.1.0
+langchain-mcp-adapters>=0.1.0
+
+# JWT validation
+PyJWT>=2.8.0
+cryptography>=42.0.0
+
+# Logging
+structlog>=25.0.0
+
+# HTTP client
+httpx>=0.27.0
+
+# Space RAG (pgvector + OpenAI embeddings)
+psycopg2-binary>=2.9.9
+pypdf>=5.0.0
+openai>=1.40.0
+
+# Optional: PostgreSQL checkpointer (persistent sessions)
+# Uncomment if you want persistent LangGraph sessions
+# langgraph-checkpoint-postgres>=2.0.0
+# asyncpg>=0.30.0
+
+# ============================================================
+# Model Providers (pick one)
+# ============================================================
+#
+# OpenAI (paid):
+#   MODEL_PROVIDER=openai
+#   OPENAI_API_KEY=sk-...
+#
+# OpenRouter (see Threat Designer MODEL_PROVIDER=openrouter + OPENROUTER_API_KEY):
+#   https://openrouter.ai/
+#   MAIN_MODEL='{"assets":{"id":"accounts/fireworks/models/qwen3p6-plus","max_tokens":100000},...}'
+#
+# Ollama (fully local, needs GPU):
+#   MODEL_PROVIDER=ollama
+#   OLLAMA_BASE_URL=http://localhost:11434
+#
+# ============================================================
+# NOT included (AWS-only packages):
+# ============================================================
+# boto3
+# botocore
+# aws-lambda-powertools
+# langchain-aws
+# langgraph-checkpoint-aws

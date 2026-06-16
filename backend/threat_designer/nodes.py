@@ -1,0 +1,387 @@
+"""Business logic services for threat modeling graph nodes."""
+
+import time
+from typing import Any, Dict
+
+from config import ThreatModelingConfig
+from constants import (
+    FINALIZATION_SLEEP_SECONDS,
+    FLUSH_MODE_APPEND,
+    FLUSH_MODE_REPLACE,
+    JobState,
+)
+from langchain_core.messages import SystemMessage
+from langchain_core.runnables.config import RunnableConfig
+from langgraph.graph import END
+from langgraph.types import Command
+from message_builder import MessageBuilder, list_to_string
+from model_service import ModelService
+from monitoring import logger, operation_context, with_error_context
+from prompt_provider import (
+    asset_prompt,
+    summary_prompt,
+    threats_improve_prompt,
+    threats_prompt,
+)
+from state import (
+    AgentState,
+    AssetsList,
+    SummaryState,
+    ThreatsList,
+)
+from state_tracking_service import StateService
+
+
+class SummaryService:
+    """Service for generating architecture summaries."""
+
+    def __init__(self, model_service: ModelService, config: ThreatModelingConfig):
+        self.model_service = model_service
+        self.config = config
+
+    @with_error_context("summary node execution")
+    def generate_summary(
+        self, state: AgentState, config: RunnableConfig
+    ) -> Dict[str, Any]:
+        """Generate architecture summary if not already present."""
+        if state.get("summary"):
+            return {}
+
+        with operation_context("generate_summary", state.get("job_id", "unknown")):
+            msg_builder = MessageBuilder(
+                state.get("image_data"),
+                state.get("description", ""),
+                list_to_string(state.get("assumptions", [])),
+                state.get("image_type"),
+                architecture_diagram_text=state.get("architecture_diagram_text"),
+            )
+            message = msg_builder.create_summary_message(
+                self.config.summary_max_words,
+            )
+
+            system_prompt = SystemMessage(content=summary_prompt())
+
+            messages = [system_prompt, message]
+            response = self.model_service.generate_summary(
+                messages, [SummaryState], config
+            )
+
+            return {"image_data": state["image_data"], "summary": response.summary}
+
+
+class AssetDefinitionService:
+    """Service for defining architecture assets."""
+
+    def __init__(self, model_service: ModelService, state_service: StateService):
+        self.model_service = model_service
+        self.state_service = state_service
+
+    def define_assets(
+        self, state: AgentState, config: RunnableConfig
+    ) -> Dict[str, Any]:
+        """Define assets from architecture analysis."""
+        job_id = state.get("job_id", "unknown")
+
+        with operation_context("define_assets", job_id):
+            self.state_service.update_job_state(job_id, JobState.ASSETS.value)
+
+            message = self._prepare_asset_message(state)
+            assets = self._invoke_asset_model(message, config, job_id)
+
+            return {"assets": assets}
+
+    def _prepare_asset_message(self, state: AgentState) -> list:
+        """Prepare message for asset definition."""
+
+        msg_builder = MessageBuilder(
+            state.get("image_data"),
+            state.get("description", ""),
+            list_to_string(state.get("assumptions", [])),
+            state.get("image_type"),
+            architecture_diagram_text=state.get("architecture_diagram_text"),
+        )
+
+        human_message = msg_builder.create_asset_message()
+
+        # Inject space insights if present
+        space_insights = state.get("space_insights")
+        if space_insights:
+            insights_block = msg_builder.space_insights_block(space_insights)
+            if insights_block and isinstance(human_message.content, list):
+                human_message.content.insert(-1, insights_block)
+
+        system_prompt = SystemMessage(
+            content=asset_prompt(
+                application_type=state.get("application_type", "hybrid")
+            )
+        )
+
+        return [system_prompt, human_message]
+
+    @with_error_context("asset node execution")
+    def _invoke_asset_model(
+        self, messages: list, config: RunnableConfig, job_id: str
+    ) -> Any:
+        """Invoke model for asset definition."""
+        reasoning = config["configurable"].get("reasoning", False)
+        response = self.model_service.invoke_structured_model(
+            messages, [AssetsList], config, reasoning, "model_assets"
+        )
+        if response["reasoning"]:
+            self.state_service.update_trail(job_id=job_id, assets=response["reasoning"])
+        return response["structured_response"]
+
+
+class ThreatDefinitionService:
+    """Service for defining threats and mitigations."""
+
+    def __init__(
+        self,
+        model_service: ModelService,
+        state_service: StateService,
+        config: ThreatModelingConfig,
+    ):
+        self.model_service = model_service
+        self.state_service = state_service
+        self.config = config
+
+    def define_threats(self, state: AgentState, config: RunnableConfig) -> Command:
+        """Define threats and mitigations for the architecture."""
+        job_id = state.get("job_id", "unknown")
+        retry_count = int(state.get("retry", 1))
+        iteration = int(state.get("iteration", 0))
+
+        with operation_context("define_threats", job_id):
+            if self._should_finalize(retry_count, iteration, config):
+                return Command(goto="finalize")
+
+            self._update_job_state_for_threats(job_id, retry_count)
+
+            messages = self._prepare_threat_messages(state, retry_count)
+            response = self._invoke_threat_model(messages, config)
+
+            # Perform similarity audit (for traditional workflow only)
+            threats_response = response["structured_response"]
+
+            self._update_reasoning_trail(
+                response["reasoning"], config, job_id, retry_count
+            )
+            return self._create_next_command(threats_response, retry_count, iteration)
+
+    def _should_finalize(
+        self, retry_count: int, iteration: int, config: RunnableConfig
+    ) -> bool:
+        """Check if threat modeling should finalize."""
+        max_retries_reached = retry_count > self.config.max_retries
+        iteration_limit_reached = (retry_count > iteration) and (iteration != 0)
+
+        return max_retries_reached or iteration_limit_reached
+
+    def _update_job_state_for_threats(self, job_id: str, retry_count: int) -> None:
+        """Update job state based on retry count."""
+        if retry_count > 1:
+            self.state_service.update_job_state(
+                job_id, JobState.THREAT_RETRY.value, retry_count
+            )
+        else:
+            self.state_service.update_job_state(
+                job_id, JobState.THREAT.value, retry_count
+            )
+
+    def _prepare_threat_messages(self, state: AgentState, retry_count: int) -> list:
+        """Prepare messages for threat definition."""
+        threat_list = state.get("threat_list")
+        if threat_list is not None:
+            threats = threat_list.threats
+        else:
+            threats = []
+
+        msg_builder = MessageBuilder(
+            state.get("image_data"),
+            state.get("description", ""),
+            list_to_string(state.get("assumptions", [])),
+            state.get("image_type"),
+            architecture_diagram_text=state.get("architecture_diagram_text"),
+        )
+
+        app_type = state.get("application_type", "hybrid")
+
+        if retry_count > 1 or len(threats) > 0:
+            human_message = msg_builder.create_threat_improve_message(
+                state["assets"], state["system_architecture"], state["threat_list"]
+            )
+            if state.get("replay") and state.get("instructions"):
+                system_prompt = SystemMessage(
+                    content=threats_improve_prompt(
+                        state.get("instructions"), application_type=app_type
+                    )
+                )
+            else:
+                system_prompt = SystemMessage(
+                    content=threats_improve_prompt(application_type=app_type)
+                )
+        else:
+            human_message = msg_builder.create_threat_message(
+                state["assets"], state["system_architecture"]
+            )
+            if state.get("replay") and state.get("instructions"):
+                system_prompt = SystemMessage(
+                    content=threats_prompt(
+                        state.get("instructions"), application_type=app_type
+                    )
+                )
+            else:
+                system_prompt = SystemMessage(
+                    content=threats_prompt(application_type=app_type)
+                )
+        return [system_prompt, human_message]
+
+    @with_error_context("threat node execution")
+    def _invoke_threat_model(self, messages: list, config: RunnableConfig) -> Any:
+        """Invoke model for threat definition."""
+        reasoning = config["configurable"].get("reasoning", False)
+        return self.model_service.invoke_structured_model(
+            messages, [ThreatsList], config, reasoning, "model_threats"
+        )
+
+    def _update_reasoning_trail(
+        self, reasoning_text: Any, config: RunnableConfig, job_id: str, retry_count: int
+    ) -> None:
+        """Update reasoning trail if enabled."""
+        reasoning = config["configurable"].get("reasoning", False)
+
+        if reasoning:
+            flush = FLUSH_MODE_REPLACE if retry_count == 1 else FLUSH_MODE_APPEND
+            if reasoning_text:
+                self.state_service.update_trail(
+                    job_id=job_id, threats=reasoning_text, flush=flush
+                )
+
+    def _create_next_command(
+        self, response: Any, retry_count: int, iteration: int
+    ) -> Command:
+        """Create next command based on current state."""
+        next_retry = retry_count + 1
+
+        update_dict = {"threat_list": response, "retry": next_retry}
+
+        return Command(goto="threats_traditional", update=update_dict)
+
+
+class WorkflowFinalizationService:
+    """Service for finalizing the workflow."""
+
+    def __init__(self, state_service: StateService):
+        self.state_service = state_service
+
+    def finalize_workflow(
+        self, state: AgentState, config: RunnableConfig = None
+    ) -> Command:
+        """Finalize the threat modeling workflow."""
+        job_id = state.get("job_id", "unknown")
+
+        with operation_context("finalize_workflow", job_id):
+            try:
+                # Capture token usage from tracker before persisting
+                if config:
+                    tracker = config.get("configurable", {}).get("token_tracker")
+                    if tracker:
+                        state["token_usage"] = tracker.totals
+
+                self.state_service.update_job_state(job_id, JobState.FINALIZE.value)
+                self.state_service.finalize_workflow(state)
+
+                # Copy matching attack trees from parent if this is a version run
+                if state.get("mirror_attack_trees") and state.get("parent_id"):
+                    try:
+                        from version_utils import copy_matching_attack_trees
+
+                        copy_matching_attack_trees(
+                            parent_id=state["parent_id"],
+                            new_job_id=job_id,
+                            new_threat_list=state.get("threat_list"),
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "Failed to copy attack trees",
+                            job_id=job_id,
+                            parent_id=state["parent_id"],
+                            error=str(e),
+                        )
+
+                time.sleep(FINALIZATION_SLEEP_SECONDS)
+                self.state_service.update_job_state(job_id, JobState.COMPLETE.value)
+                return Command(goto=END)
+            except RuntimeError as e:
+                # Handle graceful shutdown scenarios (e.g., session cancelled by user)
+                error_msg = str(e)
+                if (
+                    "cannot schedule new futures after interpreter shutdown"
+                    in error_msg
+                ):
+                    logger.debug(
+                        "Finalization stopped due to session cancellation",
+                        job_id=job_id,
+                        error=error_msg,
+                    )
+                    # Don't mark as FAILED - this is a user-initiated cancellation
+                else:
+                    # Other RuntimeErrors should be treated as failures
+                    self.state_service.update_job_state(job_id, JobState.FAILED.value)
+                raise e
+            except Exception as e:
+                self.state_service.update_job_state(job_id, JobState.FAILED.value)
+                raise e
+
+
+class ReplayService:
+    """Service for handling replay operations."""
+
+    def __init__(self, state_service: StateService):
+        self.state_service = state_service
+
+    def route_after_summary(self, state: AgentState) -> str:
+        """Route workflow after summary node.
+
+        Returns:
+            - WORKFLOW_NODE_SPACE_CONTEXT for new runs with a space attached (AWS only)
+            - WORKFLOW_NODE_ASSET for new runs without a space
+            - WORKFLOW_NODE_THREATS_AGENTIC for replay with iteration == 0
+            - WORKFLOW_NODE_THREATS_TRADITIONAL for replay with iteration > 0
+        """
+        import os
+        from constants import (
+            WORKFLOW_NODE_ASSET,
+            WORKFLOW_NODE_VERSION_DIFF,
+            WORKFLOW_NODE_SPACE_CONTEXT,
+            WORKFLOW_NODE_THREATS_AGENTIC,
+            WORKFLOW_NODE_THREATS_TRADITIONAL,
+        )
+
+        if state.get("version", False):
+            return WORKFLOW_NODE_VERSION_DIFF
+
+        if not state.get("replay", False):
+            # New run: check for attached space (space context requires AWS Bedrock KB)
+            deployment_mode = os.environ.get("DEPLOYMENT_MODE", "local").lower()
+            if state.get("space_id") and deployment_mode == "aws":
+                return WORKFLOW_NODE_SPACE_CONTEXT
+            return WORKFLOW_NODE_ASSET
+
+        job_id = state.get("job_id", "unknown")
+
+        with operation_context("replay_routing", job_id):
+            try:
+                # Clear the trail for replay
+                self.state_service.update_trail(
+                    job_id=job_id, threats=[], gaps=[], flush=FLUSH_MODE_REPLACE
+                )
+                # Route based on iteration parameter
+                iteration = state.get("iteration", 0)
+                if iteration == 0:
+                    return WORKFLOW_NODE_THREATS_AGENTIC
+                return WORKFLOW_NODE_THREATS_TRADITIONAL
+            except Exception as e:
+                error_str = str(e)
+                logger.error("Replay routing failed", error=error_str)
+                raise e
