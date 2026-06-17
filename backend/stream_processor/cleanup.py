@@ -2,6 +2,7 @@
 
 import logging
 import os
+import uuid
 
 LOG = logging.getLogger(__name__)
 
@@ -108,7 +109,8 @@ def delete_orphaned_attack_trees(
             continue
 
         try:
-            attack_tree_table.delete_item(Key={"attack_tree_id": attack_tree_id})
+            db_attack_tree_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, attack_tree_id))
+            attack_tree_table.delete_item(Key={"attack_tree_id": db_attack_tree_id})
             state_table.delete_item(Key={"id": attack_tree_id})
             deleted += 1
             LOG.info("Deleted orphaned attack tree: %s", attack_tree_id)

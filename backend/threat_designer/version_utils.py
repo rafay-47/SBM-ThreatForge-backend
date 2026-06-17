@@ -3,6 +3,7 @@
 import copy
 import os
 import re
+import sys
 from datetime import datetime, timezone
 
 from constants import ENV_ATTACK_TREE_TABLE, DEFAULT_REGION, ENV_AWS_REGION
@@ -26,10 +27,18 @@ def _get_db_access():
         import boto3
         return boto3.resource("dynamodb", region_name=REGION)
     else:
-        import sys
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
-        from utils.data_access_factory import get_database_access
-        return get_database_access(region_name=REGION)
+        _app_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "app"))
+        _saved_utils = sys.modules.get("utils")
+        sys.path.insert(0, _app_dir)
+        try:
+            from utils.data_access_factory import get_database_access
+            return get_database_access(region_name=REGION)
+        finally:
+            sys.path.remove(_app_dir)
+            if _saved_utils is not None:
+                sys.modules["utils"] = _saved_utils
+            else:
+                sys.modules.pop("utils", None)
 
 
 def copy_matching_attack_trees(

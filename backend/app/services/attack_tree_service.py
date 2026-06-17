@@ -46,6 +46,16 @@ dynamodb = None
 agent_core_client = None
 
 
+def _db_attack_tree_id(composite_id: str) -> str:
+    """Convert a composite attack_tree_id to a deterministic UUID for the DB primary key.
+
+    The Supabase ``attack_trees`` table has ``attack_tree_id`` as a ``uuid`` column,
+    so we use UUIDv5 (namespace + name) to produce a repeatable UUID from the composite
+    human-readable identifier.
+    """
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, composite_id))
+
+
 class _LegacyDynamoAccess:
     def __init__(self, dynamodb_resource):
         self._dynamodb_resource = dynamodb_resource
@@ -985,7 +995,7 @@ def fetch_attack_tree(attack_tree_id: str, user_id: str) -> Dict[str, Any]:
         attack_tree_table = _get_db_access().table(ATTACK_TREE_TABLE)
         try:
             tree_response = attack_tree_table.get_item(
-                Key={"attack_tree_id": attack_tree_id}
+                Key={"attack_tree_id": _db_attack_tree_id(attack_tree_id)}
             )
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
@@ -1117,7 +1127,7 @@ def delete_attack_tree(attack_tree_id: str, owner: str) -> Dict[str, Any]:
         # Delete from attack tree table
         attack_tree_table = _get_db_access().table(ATTACK_TREE_TABLE)
         try:
-            attack_tree_table.delete_item(Key={"attack_tree_id": attack_tree_id})
+            attack_tree_table.delete_item(Key={"attack_tree_id": _db_attack_tree_id(attack_tree_id)})
             LOG.info(
                 f"Deleted attack tree from ATTACK_TREE_TABLE",
                 extra={"attack_tree_id": attack_tree_id},
@@ -1336,7 +1346,7 @@ def update_attack_tree(
         attack_tree_table = _get_db_access().table(ATTACK_TREE_TABLE)
         try:
             attack_tree_table.update_item(
-                Key={"attack_tree_id": attack_tree_id},
+                Key={"attack_tree_id": _db_attack_tree_id(attack_tree_id)},
                 UpdateExpression="SET attack_tree_data = :data, updated_at = :updated",
                 ExpressionAttributeValues={
                     ":data": attack_tree_data,
@@ -1575,7 +1585,7 @@ def delete_attack_trees_for_threat_model(
                 # Delete from attack tree table
                 try:
                     attack_tree_table.delete_item(
-                        Key={"attack_tree_id": attack_tree_id}
+                        Key={"attack_tree_id": _db_attack_tree_id(attack_tree_id)}
                     )
                 except ClientError as e:
                     error_code = e.response["Error"]["Code"]

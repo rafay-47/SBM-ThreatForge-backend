@@ -1,5 +1,6 @@
 import os
 import json
+import uuid
 from decimal import Decimal
 from typing import List
 
@@ -164,17 +165,18 @@ def get_attack_tree(threat_model_id: str, threat_name: str) -> str:
     attack_tree_id = generate_attack_tree_id(threat_model_id, threat_name)
 
     # Query database
+    db_attack_tree_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, attack_tree_id))
     db = _get_db_access()
     if DEPLOYMENT_MODE == "aws":
         table = db.Table(ATTACK_TREE_TABLE)
         try:
-            response = table.get_item(Key={"attack_tree_id": attack_tree_id})
+            response = table.get_item(Key={"attack_tree_id": db_attack_tree_id})
         except Exception as e:
             raise Exception(f"Failed to fetch attack tree: {e}")
     else:
         table = db.table(ATTACK_TREE_TABLE)
         try:
-            response = table.get_item(Key={"attack_tree_id": attack_tree_id})
+            response = table.get_item(Key={"attack_tree_id": db_attack_tree_id})
         except Exception as e:
             raise Exception(f"Failed to fetch attack tree: {e}")
 

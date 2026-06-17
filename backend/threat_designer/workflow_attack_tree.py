@@ -27,6 +27,42 @@ from langgraph.graph import MessagesState
 from constants import MAX_EXECUTION_TIME_SECONDS
 
 
+def _import_get_database_access():
+    """Import get_database_access from app/utils with a temporary sys.path fix.
+
+    The local threat_designer/utils.py shadows the app/utils/ package,
+    so we temporarily remove the cached "utils" entry from sys.modules,
+    prepend app/ to sys.path for this import only, then restore everything.
+    We also force-load the lazy AWS imports inside data_access_factory
+    while utils still points to the app package, so later calls to
+    get_database_access don't fail.
+    """
+    import os, sys
+    _app_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "app"))
+    _saved_utils = sys.modules.get("utils")
+    _saved_utils_entries = {k: v for k, v in sys.modules.items() if k == "utils" or k.startswith("utils.")}
+    for k in _saved_utils_entries:
+        del sys.modules[k]
+    sys.path.insert(0, _app_dir)
+    try:
+        from utils.data_access_factory import (
+            get_database_access,
+            _ensure_aws_imports,
+        )
+        _ensure_aws_imports()
+        return get_database_access
+    finally:
+        sys.path.remove(_app_dir)
+        # Restore only the top-level "utils" entry to the local module.
+        # Keep all utils.* sub-entries (e.g. utils.data_access_factory,
+        # utils.aws_data_access) cached so that get_database_access()
+        # can resolve its lazy imports when called later.
+        if _saved_utils is not None:
+            sys.modules["utils"] = _saved_utils
+        else:
+            sys.modules.pop("utils", None)
+
+
 # ============================================================================
 # State Definition
 # ============================================================================
@@ -235,7 +271,14 @@ def agent_node(state: AttackTreeState, config: RunnableConfig) -> Command:
 
                 if threat_model_id:
                     import os
-                    from utils import parse_s3_image_to_base64
+                    import importlib.util as _ilu
+                    _spec = _ilu.spec_from_file_location(
+                        "_td_local_utils",
+                        os.path.join(os.path.dirname(__file__), "utils.py"),
+                    )
+                    _mod = _ilu.module_from_spec(_spec)
+                    _spec.loader.exec_module(_mod)
+                    parse_s3_image_to_base64 = _mod.parse_s3_image_to_base64
 
                     DEPLOYMENT_MODE = os.environ.get("DEPLOYMENT_MODE", "local").lower()
                     agent_state_table_name = os.environ.get("AGENT_STATE_TABLE")
@@ -247,9 +290,7 @@ def agent_node(state: AttackTreeState, config: RunnableConfig) -> Command:
                             dynamodb = boto3.resource("dynamodb")
                             table = dynamodb.Table(agent_state_table_name)
                         else:
-                            import sys
-                            sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
-                            from utils.data_access_factory import get_database_access
+                            get_database_access = _import_get_database_access()
                             db = get_database_access()
                             table = db.table(agent_state_table_name)
                         response = table.get_item(Key={"job_id": threat_model_id})
@@ -829,15 +870,15 @@ def continue_or_finish(state: AttackTreeState) -> Command:
                     dynamodb = boto3.resource("dynamodb")
                     attack_tree_table = dynamodb.Table(attack_tree_table_name)
                 else:
-                    import sys
-                    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "app"))
-                    from utils.data_access_factory import get_database_access
+                    get_database_access = _import_get_database_access()
                     db = get_database_access()
                     attack_tree_table = db.table(attack_tree_table_name)
 
+                from uuid import uuid5, NAMESPACE_DNS
+                db_attack_tree_id = str(uuid5(NAMESPACE_DNS, attack_tree_id))
                 attack_tree_table.put_item(
                     Item={
-                        "attack_tree_id": attack_tree_id,
+                        "attack_tree_id": db_attack_tree_id,
                         "threat_model_id": state.get("threat_model_id"),
                         "threat_name": state.get("threat_name"),
                         "owner": state.get("owner"),
