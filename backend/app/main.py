@@ -313,7 +313,7 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
         logger.info("%s - %s", self.client_address[0], format % args)
 
 
-def run(port: int = 8000, host: str = "0.0.0.0"):
+def run(port: int = 8000, host: str = "127.0.0.1"):
     """Start the local HTTP server."""
     with socketserver.TCPServer((host, port), RequestHandler) as httpd:
         logger.info("Threat Designer API running on http://%s:%d", host, port)
