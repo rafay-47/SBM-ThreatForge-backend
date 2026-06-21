@@ -1,29 +1,30 @@
 """Local HTTP server entry point for the Threat Designer API.
 
-Wraps the existing APIGatewayRestResolver-compatible router in a simple
-HTTP server with JWT validation middleware.  Used when DEPLOYMENT_MODE=local.
+Wraps the existing APIGatewayRestResolver-compatible router in a FastAPI/ASGI
+application served by uvicorn.  Used when DEPLOYMENT_MODE=local.
 """
 
-import http.server
 import json
 import logging
 import os
-import socketserver
 import sys
 from typing import Any, Dict, Optional
-from urllib import parse as url_parse
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Add parent directory to path so we can import app modules
 sys.path.insert(0, os.path.dirname(__file__))
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response as FastAPIResponse
 
 from utils.powertools_compat import APIGatewayRestResolver, CORSConfig, Response, content_types
 from exceptions.exceptions import BadRequestError, InternalError, ViewError
 from routes import threat_designer_route, attack_tree_route, space_route
 from utils.utils import custom_serializer, mask_sensitive_attributes
-from dotenv import load_dotenv
-
-load_dotenv() 
-
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
 logger = logging.getLogger("threat-designer-api")
@@ -46,12 +47,16 @@ cors_config = CORSConfig(
     allow_headers=["Content-Type", "Authorization"],
 )
 
-app = APIGatewayRestResolver(serializer=custom_serializer, cors=cors_config)
-app.include_router(threat_designer_route.router)
-app.include_router(attack_tree_route.router)
-app.include_router(space_route.router)
+# AWS Lambda Powertools-style resolver (existing routing logic)
+_resolver = APIGatewayRestResolver(serializer=custom_serializer, cors=cors_config)
+_resolver.include_router(threat_designer_route.router)
+_resolver.include_router(attack_tree_route.router)
+_resolver.include_router(space_route.router)
 
-# JWT validation
+# ---------------------------------------------------------------------------
+# JWT validation helpers (ported from the old http.server-based main.py)
+# ---------------------------------------------------------------------------
+
 _JWKS_CACHE: Dict[str, Any] = {}
 
 
@@ -71,7 +76,6 @@ def _find_signing_key(header: Dict[str, str], jwks: Dict[str, Any]) -> Optional[
     for key in jwks.get("keys", []):
         if key.get("kid") == kid:
             return key
-    # Fallback: return first key
     keys = jwks.get("keys", [])
     return keys[0] if keys else None
 
@@ -100,7 +104,8 @@ def _validate_token(token: str) -> Dict[str, Any]:
     signature = _base64url_decode(parts[2])
 
     alg = header.get("alg", "HS256")
-    print(f"Token algorithm: {alg}")
+    logger.debug(f"Token algorithm: {alg}")
+
     if alg.startswith("HS"):
         secret = os.getenv("SUPABASE_JWT_SECRET", "").strip()
         if secret:
@@ -161,7 +166,6 @@ def _validate_token(token: str) -> Dict[str, Any]:
             else:
                 raise ValueError(f"Unsupported key type: {kty}")
         except Exception as e:
-            # If JWKS verification fails, fall back to issuer/expiry check only
             logger.warning("JWKS verification failed (%s); falling back to issuer/expiry check", e)
             iss = payload.get("iss", "")
             if supabase_url and not iss.startswith(supabase_url):
@@ -169,7 +173,7 @@ def _validate_token(token: str) -> Dict[str, Any]:
 
     # Check expiration
     exp = payload.get("exp")
-    if exp and time.time() > exp:
+    if exp and __import__("time").time() > exp:
         raise ValueError("Token expired")
 
     return payload
@@ -213,114 +217,105 @@ def _build_authorizer_context(claims: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-class RequestHandler(http.server.BaseHTTPRequestHandler):
-    """HTTP request handler that wraps API Gateway event format."""
+# ---------------------------------------------------------------------------
+# FastAPI application
+# ---------------------------------------------------------------------------
 
-    def _handle_request(self, method: str):
-        parsed = url_parse.urlparse(self.path)
-        path = parsed.path
-        query_params = dict(url_parse.parse_qs(parsed.query))
+app = FastAPI(title="Threat Designer API", version="1.0.0")
 
-        # Parse body
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = None
-        if content_length > 0:
-            body = self.rfile.read(content_length)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
-        # Parse headers
-        headers = dict(self.headers)
 
-        # Build API Gateway event
-        event = {
-            "httpMethod": method,
-            "path": path,
-            "queryStringParameters": {k: v[0] if len(v) == 1 else v for k, v in query_params.items()},
-            "headers": headers,
-            "body": body.decode("utf-8") if isinstance(body, bytes) else body,
-            "requestContext": {
-                "authorizer": {},
-                "http": {"method": method},
-            },
-        }
+async def _dispatch(request: Request) -> FastAPIResponse:
+    """Translate a FastAPI Request into an API Gateway event, run it through
+    the existing resolver, and return a FastAPIResponse."""
+    method = request.method.upper()
+    path = request.url.path
+    query_params = dict(request.query_params)
 
-        # JWT validation
-        auth_header = headers.get("Authorization", headers.get("authorization", ""))
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:]
-            try:
-                claims = _validate_token(token)
-                event["requestContext"]["authorizer"] = _build_authorizer_context(claims)
-            except Exception as e:
-                self._send_json({"error": str(e)}, 401)
-                return
-        elif method != "OPTIONS":
-            # Require auth for non-OPTIONS requests
-            self._send_json({"error": "Missing Authorization header"}, 401)
-            return
+    body_bytes = await request.body()
+    body = body_bytes.decode("utf-8") if body_bytes else None
 
-        # Resolve through the router
+    headers = dict(request.headers)
+
+    # Build API-Gateway-compatible event
+    event = {
+        "httpMethod": method,
+        "path": path,
+        "queryStringParameters": query_params,
+        "headers": headers,
+        "body": body,
+        "requestContext": {
+            "authorizer": {},
+            "http": {"method": method},
+        },
+    }
+
+    # JWT validation
+    auth_header = headers.get("authorization", headers.get("Authorization", ""))
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
         try:
-            response = app.resolve(event, None)
-            status = response.get("statusCode", 200)
-            body = response.get("body", "")
-            resp_headers = response.get("headers", {})
+            claims = _validate_token(token)
+            event["requestContext"]["authorizer"] = _build_authorizer_context(claims)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=401)
+    elif method != "OPTIONS":
+        return JSONResponse({"error": "Missing Authorization header"}, status_code=401)
 
-            # Add CORS headers
-            resp_headers["Access-Control-Allow-Origin"] = "*"
-            resp_headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-            resp_headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
-            resp_headers["Access-Control-Allow-Credentials"] = "true"
+    # Resolve through the existing router
+    try:
+        result = _resolver.resolve(event, None)
+        status = result.get("statusCode", 200)
+        resp_body = result.get("body", "")
+        resp_headers = {k: v for k, v in result.get("headers", {}).items()}
 
-            self.send_response(status)
-            for k, v in resp_headers.items():
-                self.send_header(k, v)
-            self.end_headers()
-            if body:
-                self.wfile.write(body.encode("utf-8") if isinstance(body, str) else body)
-        except Exception as e:
-            logger.error("Request failed: %s", e, exc_info=True)
-            self._send_json({"code": type(e).__name__, "message": str(e)}, 500)
+        # Strip content-type from headers dict so we can pass it explicitly
+        content_type = resp_headers.pop(
+            "Content-Type",
+            resp_headers.pop("content-type", "application/json"),
+        )
 
-    def _send_json(self, data: Dict[str, Any], status: int):
-        body = json.dumps(data).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def do_GET(self):
-        self._handle_request("GET")
-
-    def do_POST(self):
-        self._handle_request("POST")
-
-    def do_PUT(self):
-        self._handle_request("PUT")
-
-    def do_DELETE(self):
-        self._handle_request("DELETE")
-
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        self.send_header("Access-Control-Allow-Credentials", "true")
-        self.end_headers()
-
-    def log_message(self, format, *args):
-        logger.info("%s - %s", self.client_address[0], format % args)
+        return FastAPIResponse(
+            content=resp_body.encode("utf-8") if isinstance(resp_body, str) else resp_body,
+            status_code=status,
+            headers=resp_headers,
+            media_type=content_type,
+        )
+    except Exception as exc:
+        logger.error("Request failed: %s", exc, exc_info=True)
+        return JSONResponse({"code": type(exc).__name__, "message": str(exc)}, status_code=500)
 
 
-def run(port: int = 8000, host: str = "127.0.0.1"):
-    """Start the local HTTP server."""
-    with socketserver.TCPServer((host, port), RequestHandler) as httpd:
-        logger.info("Threat Designer API running on http://%s:%d", host, port)
-        logger.info("Auth provider: %s", AUTH_PROVIDER)
-        httpd.serve_forever()
+@app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+async def catch_all(request: Request, full_path: str) -> FastAPIResponse:
+    """Single catch-all route that forwards every request to the resolver."""
+    return await _dispatch(request)
 
+
+# ---------------------------------------------------------------------------
+# Uvicorn entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    import uvicorn
+
     port = int(os.getenv("PORT", "8000"))
-    run(port=port)
+    host = os.getenv("HOST", "0.0.0.0")
+
+    logger.info("Starting Threat Designer API on http://%s:%d", host, port)
+    logger.info("Auth provider: %s", AUTH_PROVIDER)
+
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        timeout_keep_alive=75,
+        access_log=True,
+    )
