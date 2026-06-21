@@ -2171,3 +2171,203 @@ def generate_presigned_download_urls_batch(
 
     return results
 
+
+def get_dashboard_stats(owner: str) -> dict:
+    """
+    Get aggregated dashboard stats for all threat models owned by the user,
+    plus spaces, documents, and AI security recommendation details.
+    """
+    agent_table = _get_dynamodb_access().table(AGENT_TABLE)
+    owned_items = get_all_by_owner(agent_table, owner)
+    
+    total_models = len(owned_items)
+    total_threats = 0
+    high_risk = 0
+    medium_risk = 0
+    low_risk = 0
+    
+    recent_models = []
+    # Sort by timestamp desc
+    sorted_items = sorted(owned_items, key=lambda x: x.get("timestamp", ""), reverse=True)
+    
+    for item in sorted_items[:5]:
+        recent_models.append({
+            "job_id": item.get("job_id"),
+            "title": item.get("title"),
+            "timestamp": item.get("timestamp"),
+            "state": item.get("state") or "COMPLETE"
+        })
+
+    top_threats = []
+    
+    # STRIDE counts
+    stride_counts = {
+        "Spoofing": 0,
+        "Tampering": 0,
+        "Repudiation": 0,
+        "Information Disclosure": 0,
+        "Denial of Service": 0,
+        "Elevation of Privilege": 0
+    }
+    
+    for item in owned_items:
+        threat_list = item.get("threat_list")
+        if isinstance(threat_list, dict):
+            threats = threat_list.get("threats", [])
+            if isinstance(threats, list):
+                for t in threats:
+                    if isinstance(t, dict):
+                        total_threats += 1
+                        l = t.get("likelihood") or "Medium"
+                        if l == "High":
+                            high_risk += 1
+                        elif l == "Medium":
+                            medium_risk += 1
+                        elif l == "Low":
+                            low_risk += 1
+                            
+                        # STRIDE count
+                        sc = t.get("stride_category")
+                        if sc in stride_counts:
+                            stride_counts[sc] += 1
+                        else:
+                            # Try case-insensitive matching
+                            for canonical_stride in stride_counts:
+                                if str(sc).strip().lower() == canonical_stride.lower():
+                                    stride_counts[canonical_stride] += 1
+                                    break
+                        
+                        # Gather Top Threats (up to 5)
+                        if len(top_threats) < 5:
+                            top_threats.append({
+                                "name": t.get("name"),
+                                "likelihood": l,
+                                "target": t.get("target"),
+                                "model_title": item.get("title")
+                            })
+
+    # Get user spaces and recent documents
+    spaces_list = []
+    recent_documents = []
+    try:
+        from services.space_service import list_spaces, list_documents
+        user_spaces = list_spaces(owner)
+        for space in user_spaces:
+            spaces_list.append({
+                "space_id": space.get("space_id"),
+                "name": space.get("name"),
+                "description": space.get("description"),
+                "created_at": space.get("created_at")
+            })
+            
+            # Fetch documents in space
+            try:
+                space_docs = list_documents(space.get("space_id"), owner)
+                for doc in space_docs:
+                    recent_documents.append({
+                        "document_id": doc.get("document_id"),
+                        "filename": doc.get("filename"),
+                        "space_name": space.get("name"),
+                        "space_id": space.get("space_id"),
+                        "created_at": doc.get("created_at"),
+                        "status": doc.get("status")
+                    })
+            except Exception:
+                pass
+    except Exception as e:
+        LOG.warning(f"Failed to fetch spaces info for dashboard: {e}")
+
+    # Sort documents by created_at desc
+    recent_documents.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    recent_documents = recent_documents[:5]
+    
+    # Sort spaces by created_at desc
+    spaces_list.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    spaces_list = spaces_list[:3]
+
+    # Generate dynamic AI Security Recommendations based on highest STRIDE category
+    highest_stride = "Spoofing"
+    max_count = -1
+    for k, v in stride_counts.items():
+        if v > max_count:
+            max_count = v
+            highest_stride = k
+
+    # Custom advisors/recommendations based on highest stride
+    advisories = []
+    if highest_stride == "Spoofing" or max_count <= 0:
+        advisories = [
+            {
+                "title": "Enforce Strong Machine-to-Machine Authentication",
+                "description": f"Spoofing is currently your highest threat vector ({stride_counts.get('Spoofing', 0)} threats). Consider deploying mutual TLS (mTLS) or OAuth 2.0 Client Credentials with short-lived tokens to verify caller identities.",
+                "severity": "High"
+            },
+            {
+                "title": "Validate JWT Issuers and Signatures",
+                "description": "Ensure all ingress API endpoints strictly validate JWT tokens, including checking the issuer ('iss'), audience ('aud'), expiration ('exp') claims and verifying signatures using public JWKS endpoints.",
+                "severity": "Medium"
+            }
+        ]
+    elif highest_stride == "Tampering":
+        advisories = [
+            {
+                "title": "Implement Payload Validation & Cryptographic Signatures",
+                "description": f"Tampering was identified as a primary concern ({stride_counts['Tampering']} threats). Apply strict payload schema validation (Pydantic/FastAPI) and sign sensitive messages transmitted between microservices.",
+                "severity": "High"
+            },
+            {
+                "title": "Enable Storage Encryption and Integrity Checks",
+                "description": "Enforce database-level encryption at rest, use SSL/TLS connections for all query commands, and compute SHA-256 integrity checksums for sensitive file storage assets.",
+                "severity": "High"
+            }
+        ]
+    elif highest_stride == "Information Disclosure":
+        advisories = [
+            {
+                "title": "Apply Sensitive Data Masking and Logging Rules",
+                "description": f"Information Disclosure represents a major risk area ({stride_counts['Information Disclosure']} threats). Filter and mask personally identifiable info (PII) or secrets prior to console logging or exception handling.",
+                "severity": "High"
+            },
+            {
+                "title": "Implement Strict CORS and Security Headers",
+                "description": "Restrict Origin header checks to trusted origins. Ensure strict HTTP response headers are set (X-Content-Type-Options: nosniff, Content-Security-Policy).",
+                "severity": "Medium"
+            }
+        ]
+    elif highest_stride == "Denial of Service":
+        advisories = [
+            {
+                "title": "Apply API Rate Limiting and Circuit Breakers",
+                "description": f"Denial of Service is your highest threat category ({stride_counts['Denial of Service']} threats). Setup rate limiting at the API Gateway level and configure circuit breakers to avoid resource exhaustion.",
+                "severity": "High"
+            }
+        ]
+    else:
+        advisories = [
+            {
+                "title": "Enforce Principal of Least Privilege (PoLP)",
+                "description": "Elevation of Privilege or authorization gaps detected. Configure strict Role-Based Access Control (RBAC) and verify authorization claims for every user operation.",
+                "severity": "High"
+            },
+            {
+                "title": "Regularly Review and Rotate API Tokens",
+                "description": "Protect access tokens, rotate secrets dynamically (e.g. using a secure store), and audit administrative permissions.",
+                "severity": "Medium"
+            }
+        ]
+
+    return {
+        "total_models": total_models,
+        "total_threats": total_threats,
+        "high_risk": high_risk,
+        "medium_risk": medium_risk,
+        "low_risk": low_risk,
+        "recent_models": recent_models,
+        "top_threats": top_threats,
+        "stride_counts": stride_counts,
+        "spaces": spaces_list,
+        "recent_documents": recent_documents,
+        "advisories": advisories
+    }
+
+

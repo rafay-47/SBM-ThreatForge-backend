@@ -15,6 +15,7 @@ from services.threat_designer_service import (
     invoke_lambda,
     restore,
     update_results,
+    get_dashboard_stats,
 )
 from services.collaboration_service import (
     share_threat_model,
@@ -153,6 +154,31 @@ def _fetch_all():
             status_code=500,
             content_type=content_types.APPLICATION_JSON,
             body=json.dumps({"error": "Failed to fetch threat models"}),
+        )
+
+
+@router.get("/threat-designer/dashboard/stats")
+def _dashboard_stats():
+    try:
+        owner = router.current_event.request_context.authorizer.get("user_id")
+        stats_data = get_dashboard_stats(owner)
+        
+        from utils.powertools_compat import Response, content_types
+        import json
+        
+        return Response(
+            status_code=200,
+            content_type=content_types.APPLICATION_JSON,
+            body=json.dumps({"data": stats_data}),
+        )
+    except Exception as e:
+        LOG.exception(e)
+        from utils.powertools_compat import Response, content_types
+        import json
+        return Response(
+            status_code=500,
+            content_type=content_types.APPLICATION_JSON,
+            body=json.dumps({"error": "Failed to fetch dashboard stats"}),
         )
 
 
