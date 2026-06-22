@@ -2191,11 +2191,32 @@ def get_dashboard_stats(owner: str) -> dict:
     sorted_items = sorted(owned_items, key=lambda x: x.get("timestamp", ""), reverse=True)
     
     for item in sorted_items[:5]:
+        high_c = 0
+        medium_c = 0
+        low_c = 0
+        threat_list_c = item.get("threat_list")
+        if isinstance(threat_list_c, dict):
+            threats_c = threat_list_c.get("threats", [])
+            if isinstance(threats_c, list):
+                for t in threats_c:
+                    if isinstance(t, dict):
+                        l_c = t.get("likelihood") or "Medium"
+                        if l_c == "High":
+                            high_c += 1
+                        elif l_c == "Medium":
+                            medium_c += 1
+                        elif l_c == "Low":
+                            low_c += 1
         recent_models.append({
             "job_id": item.get("job_id"),
             "title": item.get("title"),
             "timestamp": item.get("timestamp"),
-            "state": item.get("state") or "COMPLETE"
+            "state": item.get("state") or "COMPLETE",
+            "stats": {
+                "high": high_c,
+                "medium": medium_c,
+                "low": low_c
+            }
         })
 
     top_threats = []
@@ -2243,7 +2264,10 @@ def get_dashboard_stats(owner: str) -> dict:
                                 "name": t.get("name"),
                                 "likelihood": l,
                                 "target": t.get("target"),
-                                "model_title": item.get("title")
+                                "model_title": item.get("title"),
+                                "model_id": item.get("job_id"),
+                                "threat_id": t.get("id"),
+                                "stride_category": sc
                             })
 
     # Get user spaces and recent documents

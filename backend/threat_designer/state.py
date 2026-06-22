@@ -14,6 +14,8 @@ from constants import (
     SUMMARY_MAX_WORDS_DEFAULT,
     AssetType,
     StrideCategory,
+    PastaStage,
+    MitreAttackTactic,
 )
 from pydantic import BaseModel, Field
 
@@ -282,6 +284,20 @@ class Threat(BaseModel):
             description=f"The STRIDE category classification: One of {', '.join([category.value for category in StrideCategory])}."
         ),
     ]
+    pasta_stage: Annotated[
+        Optional[Literal[*[stage.value for stage in PastaStage]]],
+        Field(
+            description=f"The PASTA stage mapping: One of {', '.join([stage.value for stage in PastaStage])}.",
+            default=None,
+        ),
+    ] = None
+    mitre_attack: Annotated[
+        Optional[Literal[*[tactic.value for tactic in MitreAttackTactic]]],
+        Field(
+            description=f"The MITRE ATT&CK tactic classification: One of {', '.join([tactic.value for tactic in MitreAttackTactic])}.",
+            default=None,
+        ),
+    ] = None
     description: Annotated[
         str,
         Field(

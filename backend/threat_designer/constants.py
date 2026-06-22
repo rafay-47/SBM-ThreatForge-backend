@@ -220,6 +220,38 @@ class StrideCategory(Enum):
     ELEVATION_OF_PRIVILEGE = "Elevation of Privilege"
 
 
+class PastaStage(Enum):
+    """PASTA threat modeling stages."""
+
+    STAGE_1 = "Stage 1: Define Objectives"
+    STAGE_2 = "Stage 2: Define Technical Scope"
+    STAGE_3 = "Stage 3: Application Decomposition"
+    STAGE_4 = "Stage 4: Threat Analysis"
+    STAGE_5 = "Stage 5: Vulnerability & Weakness Analysis"
+    STAGE_6 = "Stage 6: Attack Modeling"
+    STAGE_7 = "Stage 7: Risk & Impact Analysis"
+
+
+class MitreAttackTactic(Enum):
+    """MITRE ATT&CK tactics."""
+
+    RECONNAISSANCE = "Reconnaissance"
+    RESOURCE_DEVELOPMENT = "Resource Development"
+    INITIAL_ACCESS = "Initial Access"
+    EXECUTION = "Execution"
+    PERSISTENCE = "Persistence"
+    PRIVILEGE_ESCALATION = "Privilege Escalation"
+    DEFENSE_EVASION = "Defense Evasion"
+    CREDENTIAL_ACCESS = "Credential Access"
+    DISCOVERY = "Discovery"
+    LATERAL_MOVEMENT = "Lateral Movement"
+    COLLECTION = "Collection"
+    COMMAND_AND_CONTROL = "Command and Control"
+    EXFILTRATION = "Exfiltration"
+    IMPACT = "Impact"
+
+
+
 # ============================================================================
 # ASSET AND ENTITY TYPES
 # ============================================================================

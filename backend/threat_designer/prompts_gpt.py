@@ -285,6 +285,10 @@ source: Must match a threat_source identifier from the input data flow.
 
 stride_category: Exactly one of: Spoofing | Tampering | Repudiation | Information Disclosure | Denial of Service | Elevation of Privilege.
 
+pasta_stage: Exactly one of: Stage 1: Define Objectives | Stage 2: Define Technical Scope | Stage 3: Application Decomposition | Stage 4: Threat Analysis | Stage 5: Vulnerability & Weakness Analysis | Stage 6: Attack Modeling | Stage 7: Risk & Impact Analysis. Map the threat to the most appropriate PASTA stage.
+
+mitre_attack: Exactly one of: Reconnaissance | Resource Development | Initial Access | Execution | Persistence | Privilege Escalation | Defense Evasion | Credential Access | Discovery | Lateral Movement | Collection | Command and Control | Exfiltration | Impact. Map the threat to the most relevant MITRE ATT&CK tactic phase.
+
 description: Single sentence: "[source], [prerequisites summary], can [attack vector], which leads to [impact], negatively impacting [target]." Values must match corresponding JSON fields.
 
 prerequisites: Specific conditions for the attack to succeed — access level, network position, or knowledge required.
@@ -313,6 +317,8 @@ Return a JSON array of threat objects. Each object must conform to this schema:
   "target": "string — single component name from architecture",
   "source": "string — threat_source ID from data flow",
   "stride_category": "string — one of: Spoofing | Tampering | Repudiation | Information Disclosure | Denial of Service | Elevation of Privilege",
+  "pasta_stage": "string — one of: Stage 1: Define Objectives | Stage 2: Define Technical Scope | Stage 3: Application Decomposition | Stage 4: Threat Analysis | Stage 5: Vulnerability & Weakness Analysis | Stage 6: Attack Modeling | Stage 7: Risk & Impact Analysis",
+  "mitre_attack": "string — one of: Reconnaissance | Resource Development | Initial Access | Execution | Persistence | Privilege Escalation | Defense Evasion | Credential Access | Discovery | Lateral Movement | Collection | Command and Control | Exfiltration | Impact",
   "description": "string — synthesized sentence following the template in instructions",
   "prerequisites": "string — conditions required for the attack",
   "attack_vector": "string — specific technical mechanism",
@@ -679,7 +685,7 @@ Always include customer misconfigurations (public buckets, permissive IAM, unrot
 
 | Tool | Purpose | Notes |
 |------|---------|-------|
-| `add_threats` | Batch-add multiple threats per call | Fields: `target`, `source`, `stride_category`, `description`, `prerequisites`, `attack_vector`, `impact_description`, `likelihood`, `impact`, `mitigations` |
+| `add_threats` | Batch-add multiple threats per call | Fields: `target`, `source`, `stride_category`, `pasta_stage`, `mitre_attack`, `description`, `prerequisites`, `attack_vector`, `impact_description`, `likelihood`, `impact`, `mitigations` |
 | `delete_threats` | Remove threats by ID | When correcting a threat, add the replacement **before** deleting the original to avoid coverage gaps |
 | `gap_analysis` | Evaluate catalog against architecture | Call when the tool allows (minimum catalog size); then after large fix batches only |
 | `catalog_stats` | Check STRIDE distribution and asset coverage | Use **at most once per audit cycle** — not after every `add_threats` |
