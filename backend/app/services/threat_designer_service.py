@@ -2220,7 +2220,7 @@ def get_dashboard_stats(owner: str) -> dict:
         })
 
     top_threats = []
-    
+
     # STRIDE counts
     stride_counts = {
         "Spoofing": 0,
@@ -2230,7 +2230,53 @@ def get_dashboard_stats(owner: str) -> dict:
         "Denial of Service": 0,
         "Elevation of Privilege": 0
     }
-    
+
+    # PASTA stage counts
+    pasta_counts = {
+        "Stage 1: Define Objectives": 0,
+        "Stage 2: Define Technical Scope": 0,
+        "Stage 3: Application Decomposition": 0,
+        "Stage 4: Threat Analysis": 0,
+        "Stage 5: Vulnerability & Weakness Analysis": 0,
+        "Stage 6: Attack Modeling": 0,
+        "Stage 7: Risk & Impact Analysis": 0
+    }
+
+    # MITRE ATT&CK tactic counts
+    mitre_counts = {
+        "Reconnaissance": 0,
+        "Resource Development": 0,
+        "Initial Access": 0,
+        "Execution": 0,
+        "Persistence": 0,
+        "Privilege Escalation": 0,
+        "Defense Evasion": 0,
+        "Credential Access": 0,
+        "Discovery": 0,
+        "Lateral Movement": 0,
+        "Collection": 0,
+        "Command and Control": 0,
+        "Exfiltration": 0,
+        "Impact": 0
+    }
+
+    def _increment_canonical(counts_map, value):
+        """Increment the matching canonical bucket for a threat field value.
+
+        Matches case-insensitively so minor casing/whitespace differences from
+        the model do not drop the count. No-op when value is missing or unknown.
+        """
+        if not value:
+            return
+        if value in counts_map:
+            counts_map[value] += 1
+            return
+        normalized = str(value).strip().lower()
+        for canonical in counts_map:
+            if canonical.lower() == normalized:
+                counts_map[canonical] += 1
+                break
+
     for item in owned_items:
         threat_list = item.get("threat_list")
         if isinstance(threat_list, dict):
@@ -2246,18 +2292,13 @@ def get_dashboard_stats(owner: str) -> dict:
                             medium_risk += 1
                         elif l == "Low":
                             low_risk += 1
-                            
-                        # STRIDE count
+
+                        # STRIDE / PASTA / MITRE counts
                         sc = t.get("stride_category")
-                        if sc in stride_counts:
-                            stride_counts[sc] += 1
-                        else:
-                            # Try case-insensitive matching
-                            for canonical_stride in stride_counts:
-                                if str(sc).strip().lower() == canonical_stride.lower():
-                                    stride_counts[canonical_stride] += 1
-                                    break
-                        
+                        _increment_canonical(stride_counts, sc)
+                        _increment_canonical(pasta_counts, t.get("pasta_stage"))
+                        _increment_canonical(mitre_counts, t.get("mitre_attack"))
+
                         # Gather Top Threats (up to 5)
                         if len(top_threats) < 5:
                             top_threats.append({
@@ -2389,6 +2430,8 @@ def get_dashboard_stats(owner: str) -> dict:
         "recent_models": recent_models,
         "top_threats": top_threats,
         "stride_counts": stride_counts,
+        "pasta_counts": pasta_counts,
+        "mitre_counts": mitre_counts,
         "spaces": spaces_list,
         "recent_documents": recent_documents,
         "advisories": advisories
