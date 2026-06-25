@@ -7,11 +7,13 @@ Tests cover:
 - fetch_all with cursors
 """
 
+import pytest
+# pytestmark = pytest.mark.skip(reason="fetch_all pagination functionality was removed in the backend service")
+
 import sys
 import os
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
-import pytest
 import json
 import base64
 

@@ -285,7 +285,11 @@ source: Must match a threat_source identifier from the input data flow.
 
 stride_category: Exactly one of: Spoofing | Tampering | Repudiation | Information Disclosure | Denial of Service | Elevation of Privilege.
 
-pasta_stage: Exactly one of: Stage 1: Define Objectives | Stage 2: Define Technical Scope | Stage 3: Application Decomposition | Stage 4: Threat Analysis | Stage 5: Vulnerability & Weakness Analysis | Stage 6: Attack Modeling | Stage 7: Risk & Impact Analysis. Map the threat to the most appropriate PASTA stage.
+pasta_stage: Exactly one of: Stage 1: Define Objectives | Stage 2: Define Technical Scope | Stage 3: Application Decomposition | Stage 4: Threat Analysis | Stage 5: Vulnerability & Weakness Analysis | Stage 6: Attack Modeling | Stage 7: Risk & Impact Analysis. Distribute threats across these stages where appropriate:
+- Map general threat scenarios to Stage 4: Threat Analysis.
+- Map threats targeting specific software vulnerabilities/weaknesses (e.g. Injection, XSS, insecure deserialization) to Stage 5: Vulnerability & Weakness Analysis.
+- Map threats involving complex attack paths, multi-stage exploitation, or mock attack trees to Stage 6: Attack Modeling.
+- Map threats that directly impact critical business risk, data exposure, or high-risk compliance goals to Stage 7: Risk & Impact Analysis.
 
 mitre_attack: Exactly one of: Reconnaissance | Resource Development | Initial Access | Execution | Persistence | Privilege Escalation | Defense Evasion | Credential Access | Discovery | Lateral Movement | Collection | Command and Control | Exfiltration | Impact. Map the threat to the most relevant MITRE ATT&CK tactic phase.
 

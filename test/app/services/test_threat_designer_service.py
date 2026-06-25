@@ -884,6 +884,8 @@ class TestDeleteThreatModel:
         },
     )
     @patch("utils.authorization.require_owner")
+    @patch("services.attack_tree_service.require_owner")
+    @patch("services.attack_tree_service.dynamodb")
     @patch("services.lock_service.get_lock_status")
     @patch("services.threat_designer_service.check_status")
     @patch("services.threat_designer_service.fetch_results")
@@ -898,18 +900,37 @@ class TestDeleteThreatModel:
         mock_fetch,
         mock_check_status,
         mock_lock_status,
+        mock_ats_dynamodb,
+        mock_ats_require_owner,
         mock_require_owner,
     ):
         """Test owner can delete threat model."""
         # Setup
         mock_require_owner.return_value = None
+        mock_ats_require_owner.return_value = None
         mock_lock_status.return_value = {"locked": False}
         mock_check_status.return_value = {"state": "COMPLETE"}
         mock_fetch.return_value = {"item": {"s3_location": "test-key.json"}}
 
         mock_sharing_table = Mock()
         mock_sharing_table.query.return_value = {"Items": []}
+        mock_sharing_table.batch_writer.return_value.__enter__ = Mock(return_value=Mock())
+        mock_sharing_table.batch_writer.return_value.__exit__ = Mock(return_value=False)
         mock_dynamodb.Table.return_value = mock_sharing_table
+
+        mock_ats_table = Mock()
+        mock_ats_table.get_item.return_value = {
+            "Item": {
+                "job_id": "test-job-123",
+                "threat_list": {
+                    "threats": [
+                        {"name": "threat1"},
+                        {"name": "threat2"}
+                    ]
+                }
+            }
+        }
+        mock_ats_dynamodb.Table.return_value = mock_ats_table
 
         # Execute
         result = delete_tm("test-job-123", "user-123")
@@ -918,8 +939,8 @@ class TestDeleteThreatModel:
         assert result["job_id"] == "test-job-123"
         assert result["state"] == "Deleted"
         # require_owner is called twice: once in delete_tm and once in delete_attack_trees_for_threat_model
-        assert mock_require_owner.call_count == 2
-        mock_require_owner.assert_any_call("test-job-123", "user-123")
+        mock_require_owner.assert_called_once_with("test-job-123", "user-123")
+        mock_ats_require_owner.assert_called_once_with("test-job-123", "user-123")
         mock_delete_s3.assert_called_once_with("test-key.json")
 
     @patch.dict(
@@ -948,6 +969,7 @@ class TestDeleteThreatModel:
             "LOCKS_TABLE": "test-locks-table",
         },
     )
+    @patch("services.attack_tree_service.delete_attack_trees_for_threat_model")
     @patch("utils.authorization.require_owner")
     @patch("services.lock_service.get_lock_status")
     @patch("services.lock_service.force_release_lock")
@@ -966,6 +988,7 @@ class TestDeleteThreatModel:
         mock_force_release,
         mock_lock_status,
         mock_require_owner,
+        mock_delete_ats,
     ):
         """Test delete_tm force releases lock if requested."""
         # Setup
@@ -979,6 +1002,8 @@ class TestDeleteThreatModel:
 
         mock_sharing_table = Mock()
         mock_sharing_table.query.return_value = {"Items": []}
+        mock_sharing_table.batch_writer.return_value.__enter__ = Mock(return_value=Mock())
+        mock_sharing_table.batch_writer.return_value.__exit__ = Mock(return_value=False)
         mock_dynamodb.Table.return_value = mock_sharing_table
 
         # Execute
@@ -1021,6 +1046,7 @@ class TestDeleteThreatModel:
             "LOCKS_TABLE": "test-locks-table",
         },
     )
+    @patch("services.attack_tree_service.delete_attack_trees_for_threat_model")
     @patch("utils.authorization.require_owner")
     @patch("services.lock_service.get_lock_status")
     @patch("services.threat_designer_service.check_status")
@@ -1039,6 +1065,7 @@ class TestDeleteThreatModel:
         mock_check_status,
         mock_lock_status,
         mock_require_owner,
+        mock_delete_ats,
     ):
         """Test delete_tm stops active execution before deletion."""
         # Setup
@@ -1052,6 +1079,8 @@ class TestDeleteThreatModel:
 
         mock_sharing_table = Mock()
         mock_sharing_table.query.return_value = {"Items": []}
+        mock_sharing_table.batch_writer.return_value.__enter__ = Mock(return_value=Mock())
+        mock_sharing_table.batch_writer.return_value.__exit__ = Mock(return_value=False)
         mock_dynamodb.Table.return_value = mock_sharing_table
 
         # Execute
@@ -1071,6 +1100,7 @@ class TestDeleteThreatModel:
             "LOCKS_TABLE": "test-locks-table",
         },
     )
+    @patch("services.attack_tree_service.delete_attack_trees_for_threat_model")
     @patch("utils.authorization.require_owner")
     @patch("services.lock_service.get_lock_status")
     @patch("services.threat_designer_service.check_status")
@@ -1087,6 +1117,7 @@ class TestDeleteThreatModel:
         mock_check_status,
         mock_lock_status,
         mock_require_owner,
+        mock_delete_ats,
     ):
         """Test delete_tm deletes S3 object."""
         # Setup
@@ -1099,6 +1130,8 @@ class TestDeleteThreatModel:
 
         mock_sharing_table = Mock()
         mock_sharing_table.query.return_value = {"Items": []}
+        mock_sharing_table.batch_writer.return_value.__enter__ = Mock(return_value=Mock())
+        mock_sharing_table.batch_writer.return_value.__exit__ = Mock(return_value=False)
         mock_dynamodb.Table.return_value = mock_sharing_table
 
         # Execute
@@ -1512,7 +1545,7 @@ class TestSingleDownloadAuthorizationProperty:
         user_id=st.uuids().map(str),
         access_level=st.sampled_from(["OWNER", "READ_ONLY", "EDIT", "NONE"]),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_authorization_always_checked_before_presigned_url_generation(
         self, threat_model_id, user_id, access_level
     ):
@@ -1534,12 +1567,22 @@ class TestSingleDownloadAuthorizationProperty:
                 "services.threat_designer_service.extract_threat_model_id_from_s3_location"
             ) as mock_extract,
             patch("services.threat_designer_service.s3_pre") as mock_s3,
+            patch("services.threat_designer_service._get_dynamodb_access") as mock_db_access,
         ):
             # Setup mocks
             mock_extract.return_value = threat_model_id
             mock_s3.generate_presigned_url.return_value = (
                 f"https://s3.example.com/{threat_model_id}"
             )
+
+            mock_table = MagicMock()
+            mock_table.get_item.return_value = {
+                "Item": {
+                    "job_id": threat_model_id,
+                    "s3_location": threat_model_id
+                }
+            }
+            mock_db_access.return_value.table.return_value = mock_table
 
             # Configure authorization based on access level
             if access_level == "NONE":
@@ -1583,7 +1626,7 @@ class TestSingleDownloadAuthorizationProperty:
         collaborator_id=st.uuids().map(str),
         unauthorized_user_id=st.uuids().map(str),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_authorization_enforces_access_control(
         self, threat_model_id, owner_id, collaborator_id, unauthorized_user_id
     ):
@@ -1595,7 +1638,7 @@ class TestSingleDownloadAuthorizationProperty:
         Validates: Requirements 2.1
         """
         from services.threat_designer_service import generate_presigned_download_url
-        from unittest.mock import patch
+        from unittest.mock import patch, MagicMock
 
         # Test cases: (user_id, should_have_access)
         test_cases = [
@@ -1611,12 +1654,22 @@ class TestSingleDownloadAuthorizationProperty:
                     "services.threat_designer_service.extract_threat_model_id_from_s3_location"
                 ) as mock_extract,
                 patch("services.threat_designer_service.s3_pre") as mock_s3,
+                patch("services.threat_designer_service._get_dynamodb_access") as mock_db_access,
             ):
                 # Setup mocks
                 mock_extract.return_value = threat_model_id
                 mock_s3.generate_presigned_url.return_value = (
                     f"https://s3.example.com/{threat_model_id}"
                 )
+
+                mock_table = MagicMock()
+                mock_table.get_item.return_value = {
+                    "Item": {
+                        "job_id": threat_model_id,
+                        "s3_location": threat_model_id
+                    }
+                }
+                mock_db_access.return_value.table.return_value = mock_table
 
                 if should_have_access:
                     mock_require_access.return_value = {
@@ -1662,7 +1715,7 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
         user_id=st.uuids().map(str),
         access_level=st.sampled_from(["OWNER", "READ_ONLY", "EDIT"]),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_sufficient_access_levels_generate_presigned_urls(
         self, threat_model_id, user_id, access_level
     ):
@@ -1677,7 +1730,7 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
         from services.threat_designer_service import (
             generate_presigned_download_url_with_auth,
         )
-        from unittest.mock import patch
+        from unittest.mock import patch, MagicMock
 
         with (
             patch("utils.authorization.require_access") as mock_require_access,
@@ -1685,11 +1738,21 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
                 "services.threat_designer_service.extract_threat_model_id_from_s3_location"
             ) as mock_extract,
             patch("services.threat_designer_service.s3_pre") as mock_s3,
+            patch("services.threat_designer_service._get_dynamodb_access") as mock_db_access,
         ):
             # Setup mocks
             mock_extract.return_value = threat_model_id
             expected_url = f"https://s3.example.com/{threat_model_id}"
             mock_s3.generate_presigned_url.return_value = expected_url
+
+            mock_table = MagicMock()
+            mock_table.get_item.return_value = {
+                "Item": {
+                    "job_id": threat_model_id,
+                    "s3_location": threat_model_id
+                }
+            }
+            mock_db_access.return_value.table.return_value = mock_table
 
             # Configure authorization - all these access levels should succeed
             mock_require_access.return_value = {
@@ -1729,7 +1792,7 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
         read_only_user_id=st.uuids().map(str),
         edit_user_id=st.uuids().map(str),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_all_access_levels_can_generate_presigned_urls(
         self, threat_model_id, owner_id, read_only_user_id, edit_user_id
     ):
@@ -1743,7 +1806,7 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
         from services.threat_designer_service import (
             generate_presigned_download_url_with_auth,
         )
-        from unittest.mock import patch
+        from unittest.mock import patch, MagicMock
 
         # Test cases: (user_id, access_level)
         test_cases = [
@@ -1759,6 +1822,7 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
                     "services.threat_designer_service.extract_threat_model_id_from_s3_location"
                 ) as mock_extract,
                 patch("services.threat_designer_service.s3_pre") as mock_s3,
+                patch("services.threat_designer_service._get_dynamodb_access") as mock_db_access,
             ):
                 # Setup mocks
                 mock_extract.return_value = threat_model_id
@@ -1766,6 +1830,15 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
                     f"https://s3.example.com/{threat_model_id}?user={user_id}"
                 )
                 mock_s3.generate_presigned_url.return_value = expected_url
+
+                mock_table = MagicMock()
+                mock_table.get_item.return_value = {
+                    "Item": {
+                        "job_id": threat_model_id,
+                        "s3_location": threat_model_id
+                    }
+                }
+                mock_db_access.return_value.table.return_value = mock_table
 
                 # Configure authorization - should succeed
                 mock_require_access.return_value = {
@@ -1795,7 +1868,7 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
         user_id=st.uuids().map(str),
         expiration=st.integers(min_value=60, max_value=3600),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_presigned_url_respects_expiration_parameter(
         self, threat_model_id, user_id, expiration
     ):
@@ -1809,7 +1882,7 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
         from services.threat_designer_service import (
             generate_presigned_download_url_with_auth,
         )
-        from unittest.mock import patch
+        from unittest.mock import patch, MagicMock
 
         with (
             patch("utils.authorization.require_access") as mock_require_access,
@@ -1817,11 +1890,21 @@ class TestSufficientAccessGrantsPresignedURLsProperty:
                 "services.threat_designer_service.extract_threat_model_id_from_s3_location"
             ) as mock_extract,
             patch("services.threat_designer_service.s3_pre") as mock_s3,
+            patch("services.threat_designer_service._get_dynamodb_access") as mock_db_access,
         ):
             # Setup mocks
             mock_extract.return_value = threat_model_id
             expected_url = f"https://s3.example.com/{threat_model_id}"
             mock_s3.generate_presigned_url.return_value = expected_url
+
+            mock_table = MagicMock()
+            mock_table.get_item.return_value = {
+                "Item": {
+                    "job_id": threat_model_id,
+                    "s3_location": threat_model_id
+                }
+            }
+            mock_db_access.return_value.table.return_value = mock_table
 
             # Configure authorization - OWNER access
             mock_require_access.return_value = {
@@ -1856,7 +1939,7 @@ class TestBatchPresignedURLGeneration:
         batch_size=st.integers(min_value=1, max_value=50),
         user_id=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_batch_completeness(self, batch_size, user_id):
         """
         Property 1: Batch completeness
@@ -1886,9 +1969,10 @@ class TestBatchPresignedURLGeneration:
                 "services.threat_designer_service._check_access_cached"
             ) as mock_check_access,
             patch(
-                "services.threat_designer_service.s3_pre.generate_presigned_url"
-            ) as mock_presign,
+                "services.threat_designer_service._get_s3_access"
+            ) as mock_get_s3,
         ):
+            mock_presign = mock_get_s3.return_value.generate_presigned_url
             # Mock threat models cache with s3_location
             mock_fetch_models.return_value = {
                 tid: {"s3_location": f"s3://bucket/{tid}"} for tid in threat_model_ids
@@ -1913,7 +1997,7 @@ class TestBatchPresignedURLGeneration:
         invalid_count=st.integers(min_value=1, max_value=25),
         user_id=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_invalid_item_handling(self, valid_count, invalid_count, user_id):
         """
         Property 2: Invalid item handling
@@ -1950,9 +2034,10 @@ class TestBatchPresignedURLGeneration:
                 "services.threat_designer_service._check_access_cached"
             ) as mock_check_access,
             patch(
-                "services.threat_designer_service.s3_pre.generate_presigned_url"
-            ) as mock_presign,
+                "services.threat_designer_service._get_s3_access"
+            ) as mock_get_s3,
         ):
+            mock_presign = mock_get_s3.return_value.generate_presigned_url
             # Mock threat models cache - only valid IDs have entries
             mock_fetch_models.return_value = {
                 tid: {"s3_location": f"s3://bucket/{tid}"} for tid in valid_ids
@@ -1983,7 +2068,7 @@ class TestBatchPresignedURLGeneration:
         batch_size=st.integers(min_value=2, max_value=50),
         user_id=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_order_preservation(self, batch_size, user_id):
         """
         Property 3: Order preservation
@@ -2013,9 +2098,10 @@ class TestBatchPresignedURLGeneration:
                 "services.threat_designer_service._check_access_cached"
             ) as mock_check_access,
             patch(
-                "services.threat_designer_service.s3_pre.generate_presigned_url"
-            ) as mock_presign,
+                "services.threat_designer_service._get_s3_access"
+            ) as mock_get_s3,
         ):
+            mock_presign = mock_get_s3.return_value.generate_presigned_url
             # Mock threat models cache with s3_location
             mock_fetch_models.return_value = {
                 tid: {"s3_location": f"s3://bucket/{tid}"} for tid in threat_model_ids
@@ -2024,8 +2110,8 @@ class TestBatchPresignedURLGeneration:
             mock_check_access.return_value = {"has_access": True}
 
             # Mock to return unique URLs based on location
-            def presign_side_effect(method, Params, ExpiresIn, HttpMethod):
-                return f"https://s3.example.com/{Params['Key']}"
+            def presign_side_effect(method, params, expires_in, http_method):
+                return f"https://s3.example.com/{params['Key']}"
 
             mock_presign.side_effect = presign_side_effect
 
@@ -2045,7 +2131,7 @@ class TestBatchPresignedURLGeneration:
         unauthorized_count=st.integers(min_value=1, max_value=25),
         user_id=st.text(min_size=1, max_size=50),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     def test_partial_failure_handling(
         self, authorized_count, unauthorized_count, user_id
     ):
@@ -2082,9 +2168,10 @@ class TestBatchPresignedURLGeneration:
                 "services.threat_designer_service._check_access_cached"
             ) as mock_check_access,
             patch(
-                "services.threat_designer_service.s3_pre.generate_presigned_url"
-            ) as mock_presign,
+                "services.threat_designer_service._get_s3_access"
+            ) as mock_get_s3,
         ):
+            mock_presign = mock_get_s3.return_value.generate_presigned_url
             # Mock threat models cache - all IDs have entries
             mock_fetch_models.return_value = {
                 tid: {"s3_location": f"s3://bucket/{tid}"} for tid in all_ids

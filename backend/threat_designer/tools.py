@@ -221,6 +221,31 @@ def _calculate_threat_kpis(
                 "Denial of Service": {"count": 0, "percentage": 0.0},
                 "Elevation of Privilege": {"count": 0, "percentage": 0.0},
             },
+            "threats_by_pasta": {
+                "Stage 1: Define Objectives": {"count": 0, "percentage": 0.0},
+                "Stage 2: Define Technical Scope": {"count": 0, "percentage": 0.0},
+                "Stage 3: Application Decomposition": {"count": 0, "percentage": 0.0},
+                "Stage 4: Threat Analysis": {"count": 0, "percentage": 0.0},
+                "Stage 5: Vulnerability & Weakness Analysis": {"count": 0, "percentage": 0.0},
+                "Stage 6: Attack Modeling": {"count": 0, "percentage": 0.0},
+                "Stage 7: Risk & Impact Analysis": {"count": 0, "percentage": 0.0},
+            },
+            "threats_by_mitre": {
+                "Reconnaissance": {"count": 0, "percentage": 0.0},
+                "Resource Development": {"count": 0, "percentage": 0.0},
+                "Initial Access": {"count": 0, "percentage": 0.0},
+                "Execution": {"count": 0, "percentage": 0.0},
+                "Persistence": {"count": 0, "percentage": 0.0},
+                "Privilege Escalation": {"count": 0, "percentage": 0.0},
+                "Defense Evasion": {"count": 0, "percentage": 0.0},
+                "Credential Access": {"count": 0, "percentage": 0.0},
+                "Discovery": {"count": 0, "percentage": 0.0},
+                "Lateral Movement": {"count": 0, "percentage": 0.0},
+                "Collection": {"count": 0, "percentage": 0.0},
+                "Command and Control": {"count": 0, "percentage": 0.0},
+                "Exfiltration": {"count": 0, "percentage": 0.0},
+                "Impact": {"count": 0, "percentage": 0.0},
+            },
             "threats_by_source": {},
             "threats_by_asset": {},
             "uncovered_sources": [],
@@ -275,6 +300,69 @@ def _calculate_threat_kpis(
             round((count / total_threats * 100), 1) if total_threats > 0 else 0.0
         )
         threats_by_stride[category] = {
+            "count": count,
+            "percentage": percentage,
+        }
+
+    # Count threats by PASTA stage
+    pasta_counter = Counter()
+    for threat in threats:
+        if hasattr(threat, "pasta_stage") and threat.pasta_stage:
+            pasta_counter[threat.pasta_stage] += 1
+
+    # Calculate percentages for PASTA
+    threats_by_pasta = {}
+    pasta_stages = [
+        "Stage 1: Define Objectives",
+        "Stage 2: Define Technical Scope",
+        "Stage 3: Application Decomposition",
+        "Stage 4: Threat Analysis",
+        "Stage 5: Vulnerability & Weakness Analysis",
+        "Stage 6: Attack Modeling",
+        "Stage 7: Risk & Impact Analysis",
+    ]
+
+    for stage in pasta_stages:
+        count = pasta_counter.get(stage, 0)
+        percentage = (
+            round((count / total_threats * 100), 1) if total_threats > 0 else 0.0
+        )
+        threats_by_pasta[stage] = {
+            "count": count,
+            "percentage": percentage,
+        }
+
+    # Count threats by MITRE ATT&CK tactic
+    mitre_counter = Counter()
+    for threat in threats:
+        if hasattr(threat, "mitre_attack") and threat.mitre_attack:
+            mitre_counter[threat.mitre_attack] += 1
+
+    # Calculate percentages for MITRE
+    threats_by_mitre = {}
+    mitre_tactics = [
+        "Reconnaissance",
+        "Resource Development",
+        "Initial Access",
+        "Execution",
+        "Persistence",
+        "Privilege Escalation",
+        "Defense Evasion",
+        "Credential Access",
+        "Discovery",
+        "Lateral Movement",
+        "Collection",
+        "Command and Control",
+        "Exfiltration",
+        "Impact",
+    ]
+
+    for tactic in mitre_tactics:
+        count = mitre_counter.get(tactic, 0)
+        percentage = (
+            round((count / total_threats * 100), 1) if total_threats > 0 else 0.0
+        )
+        threats_by_mitre[tactic] = {
             "count": count,
             "percentage": percentage,
         }
@@ -354,6 +442,8 @@ def _calculate_threat_kpis(
         "total_threats": total_threats,
         "threats_by_likelihood": threats_by_likelihood,
         "threats_by_stride": threats_by_stride,
+        "threats_by_pasta": threats_by_pasta,
+        "threats_by_mitre": threats_by_mitre,
         "threats_by_source": threats_by_source,
         "threats_by_asset": threats_by_asset,
         "uncovered_sources": uncovered_sources,
@@ -409,6 +499,22 @@ No threats in catalog yet.
         count = data["count"]
         percentage = data["percentage"]
         output.append(f"- {category}: {count} ({percentage}%)")
+    output.append("")
+
+    # Threats by PASTA Stage
+    output.append("**Threats by PASTA Stage**:")
+    for stage, data in kpis["threats_by_pasta"].items():
+        count = data["count"]
+        percentage = data["percentage"]
+        output.append(f"- {stage}: {count} ({percentage}%)")
+    output.append("")
+
+    # Threats by MITRE ATT&CK Tactic
+    output.append("**Threats by MITRE ATT&CK Tactic**:")
+    for tactic, data in kpis["threats_by_mitre"].items():
+        count = data["count"]
+        percentage = data["percentage"]
+        output.append(f"- {tactic}: {count} ({percentage}%)")
     output.append("")
 
     # Threats by Source
@@ -720,10 +826,16 @@ def catalog_stats(
             return f"No threats found targeting '{asset_name}'."
 
         stride_counter = Counter()
+        pasta_counter = Counter()
+        mitre_counter = Counter()
         likelihood_counter = Counter()
         for t in asset_threats:
             if t.stride_category:
                 stride_counter[t.stride_category] += 1
+            if hasattr(t, "pasta_stage") and t.pasta_stage:
+                pasta_counter[t.pasta_stage] += 1
+            if hasattr(t, "mitre_attack") and t.mitre_attack:
+                mitre_counter[t.mitre_attack] += 1
             if t.likelihood:
                 likelihood_counter[t.likelihood] += 1
 
@@ -739,6 +851,40 @@ def catalog_stats(
         ]:
             count = stride_counter.get(cat, 0)
             output += f"  - {cat}: {count}\n"
+
+        output += "\nBy PASTA:\n"
+        for stage in [
+            "Stage 1: Define Objectives",
+            "Stage 2: Define Technical Scope",
+            "Stage 3: Application Decomposition",
+            "Stage 4: Threat Analysis",
+            "Stage 5: Vulnerability & Weakness Analysis",
+            "Stage 6: Attack Modeling",
+            "Stage 7: Risk & Impact Analysis",
+        ]:
+            count = pasta_counter.get(stage, 0)
+            output += f"  - {stage}: {count}\n"
+
+        output += "\nBy MITRE ATT&CK:\n"
+        for tactic in [
+            "Reconnaissance",
+            "Resource Development",
+            "Initial Access",
+            "Execution",
+            "Persistence",
+            "Privilege Escalation",
+            "Defense Evasion",
+            "Credential Access",
+            "Discovery",
+            "Lateral Movement",
+            "Collection",
+            "Command and Control",
+            "Exfiltration",
+            "Impact",
+        ]:
+            count = mitre_counter.get(tactic, 0)
+            output += f"  - {tactic}: {count}\n"
+
         output += "\nBy Likelihood:\n"
         for level in ["High", "Medium", "Low"]:
             output += f"  - {level}: {likelihood_counter.get(level, 0)}\n"
@@ -763,39 +909,7 @@ def gap_analysis(runtime: ToolRuntime) -> str:
     tool_use = unwrap_overwrite(runtime.state.get("tool_use", 0), 0)
     job_id = runtime.state.get("job_id", "unknown")
 
-    min_threats = MIN_GAP_THRESHOLD
     max_gap = MAX_GAP_ANALYSIS_USES
-
-    # Check if threat catalog has enough threats
-    threat_list = runtime.state.get("threat_list")
-    threat_count = (
-        len(threat_list.threats) if threat_list and threat_list.threats else 0
-    )
-
-    if threat_count < min_threats:
-        error_msg = (
-            f"Gap analysis requires at least {min_threats} threats in the catalog. "
-            f"Current count: {threat_count}. Please add more threats before performing gap analysis."
-        )
-        logger.warning(
-            "Gap analysis rejected - insufficient threats",
-            tool="gap_analysis",
-            current_threat_count=threat_count,
-            required_threat_count=min_threats,
-            job_id=job_id,
-        )
-        # Reset tool_use counter so agent can continue adding threats
-        return Command(
-            update={
-                "tool_use": Overwrite(0),
-                "messages": [
-                    ToolMessage(
-                        error_msg,
-                        tool_call_id=runtime.tool_call_id,
-                    )
-                ],
-            }
-        )
 
     # Check limit
     if gap_tool_use >= max_gap:

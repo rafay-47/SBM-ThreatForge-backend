@@ -15,6 +15,7 @@ from utils.data_access_factory import get_database_access
 from utils.service_contracts import (
     AGENT_STATE_TABLE,
     ATTACK_TREE_TABLE as ATTACK_TREE_TABLE_NAME,
+    DATABASE_PROVIDER,
     DEPLOYMENT_MODE,
     JOB_STATUS_TABLE,
     REGION,
@@ -53,7 +54,9 @@ def _db_attack_tree_id(composite_id: str) -> str:
     so we use UUIDv5 (namespace + name) to produce a repeatable UUID from the composite
     human-readable identifier.
     """
-    return str(uuid.uuid5(uuid.NAMESPACE_DNS, composite_id))
+    if DATABASE_PROVIDER == "supabase":
+        return str(uuid.uuid5(uuid.NAMESPACE_DNS, composite_id))
+    return composite_id
 
 
 class _LegacyDynamoAccess:
@@ -143,7 +146,7 @@ def _invoke_attack_tree_runtime(session_id: str, payload: Dict[str, Any]) -> Non
     )
 
     try:
-        with url_request.urlopen(req, timeout=30) as response:
+        with url_request.urlopen(req, timeout=90) as response:
             if response.status >= 400:
                 raise InternalError(
                     f"Attack tree agent invocation failed with status {response.status}"

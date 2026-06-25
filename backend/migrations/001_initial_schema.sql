@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS agent_trail (
     assets TEXT,
     flows TEXT,
     threats TEXT,
-    gaps TEXT,
+    gap TEXT,
     space_context TEXT,
     "timestamp" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

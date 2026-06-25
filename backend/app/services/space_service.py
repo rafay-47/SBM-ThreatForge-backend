@@ -301,9 +301,12 @@ def confirm_document_upload(
         "filename": filename,
         "s3_key": s3_key,
         "status": initial_status,
-        "created_at": now,
-        "updated_at": now,
+        "uploaded_by": user_id,
+        "uploaded_at": now,
     }
+    if DEPLOYMENT_MODE == "aws":
+        item["created_at"] = now
+        item["updated_at"] = now
     docs_table = _get_db_access().table(SPACE_DOCUMENTS_TABLE)
     docs_table.put_item(Item=item)
 
@@ -350,14 +353,28 @@ def confirm_document_upload(
             )
             final_status = "FAILED"
         now = _now()
-        docs_table.update_item(
-            Key={"space_id": space_id, "document_id": document_id},
-            UpdateExpression="SET #s = :s, updated_at = :u",
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues={":s": final_status, ":u": now},
-        )
+        if DEPLOYMENT_MODE == "aws":
+            docs_table.update_item(
+                Key={"space_id": space_id, "document_id": document_id},
+                UpdateExpression="SET #s = :s, updated_at = :u",
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues={":s": final_status, ":u": now},
+            )
+            item["updated_at"] = now
+        else:
+            docs_table.update_item(
+                Key={"space_id": space_id, "document_id": document_id},
+                UpdateExpression="SET #s = :s",
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues={":s": final_status},
+            )
         item["status"] = final_status
-        item["updated_at"] = now
+
+    # Add mapping fallback for created_at/updated_at fields on non-AWS environments
+    if "created_at" not in item and "uploaded_at" in item:
+        item["created_at"] = item["uploaded_at"]
+    if "updated_at" not in item and "uploaded_at" in item:
+        item["updated_at"] = item["uploaded_at"]
 
     return item
 
@@ -400,24 +417,37 @@ def list_documents(space_id: str, user_id: str) -> List[Dict[str, Any]]:
                             )
                         now = _now()
                         for doc in ingesting:
-                            doc_created = doc.get("created_at", "")
+                            doc_created = doc.get("created_at") or doc.get("uploaded_at") or ""
                             try:
                                 doc_dt = datetime.fromisoformat(doc_created)
                                 if doc_dt.tzinfo is None:
                                     doc_dt = doc_dt.replace(tzinfo=timezone.utc)
                                 if doc_dt <= last_complete_at:
-                                    docs_table.update_item(
-                                        Key={
-                                            "space_id": space_id,
-                                            "document_id": doc["document_id"],
-                                        },
-                                        UpdateExpression="SET #s = :s, updated_at = :u",
-                                        ExpressionAttributeNames={"#s": "status"},
-                                        ExpressionAttributeValues={
-                                            ":s": "READY",
-                                            ":u": now,
-                                        },
-                                    )
+                                    if DEPLOYMENT_MODE == "aws":
+                                        docs_table.update_item(
+                                            Key={
+                                                "space_id": space_id,
+                                                "document_id": doc["document_id"],
+                                            },
+                                            UpdateExpression="SET #s = :s, updated_at = :u",
+                                            ExpressionAttributeNames={"#s": "status"},
+                                            ExpressionAttributeValues={
+                                                ":s": "READY",
+                                                ":u": now,
+                                            },
+                                        )
+                                    else:
+                                        docs_table.update_item(
+                                            Key={
+                                                "space_id": space_id,
+                                                "document_id": doc["document_id"],
+                                            },
+                                            UpdateExpression="SET #s = :s",
+                                            ExpressionAttributeNames={"#s": "status"},
+                                            ExpressionAttributeValues={
+                                                ":s": "READY",
+                                            },
+                                        )
                                     doc["status"] = "READY"
                             except (ValueError, TypeError):
                                 pass
@@ -426,19 +456,39 @@ def list_documents(space_id: str, user_id: str) -> List[Dict[str, Any]]:
         else:
             now = _now()
             for doc in ingesting:
-                docs_table.update_item(
-                    Key={
-                        "space_id": space_id,
-                        "document_id": doc["document_id"],
-                    },
-                    UpdateExpression="SET #s = :s, updated_at = :u",
-                    ExpressionAttributeNames={"#s": "status"},
-                    ExpressionAttributeValues={
-                        ":s": "READY",
-                        ":u": now,
-                    },
-                )
+                if DEPLOYMENT_MODE == "aws":
+                    docs_table.update_item(
+                        Key={
+                            "space_id": space_id,
+                            "document_id": doc["document_id"],
+                        },
+                        UpdateExpression="SET #s = :s, updated_at = :u",
+                        ExpressionAttributeNames={"#s": "status"},
+                        ExpressionAttributeValues={
+                            ":s": "READY",
+                            ":u": now,
+                        },
+                    )
+                else:
+                    docs_table.update_item(
+                        Key={
+                            "space_id": space_id,
+                            "document_id": doc["document_id"],
+                        },
+                        UpdateExpression="SET #s = :s",
+                        ExpressionAttributeNames={"#s": "status"},
+                        ExpressionAttributeValues={
+                            ":s": "READY",
+                        },
+                    )
                 doc["status"] = "READY"
+
+    # Add mapping fallback for created_at/updated_at fields on non-AWS environments
+    for doc in items:
+        if "created_at" not in doc and "uploaded_at" in doc:
+            doc["created_at"] = doc["uploaded_at"]
+        if "updated_at" not in doc and "uploaded_at" in doc:
+            doc["updated_at"] = doc["uploaded_at"]
 
     return items
 
@@ -495,9 +545,19 @@ def share_space(space_id: str, owner: str, user_ids: List[str]) -> List[Dict[str
             "space_id": space_id,
             "user_id": uid,
             "access_level": "READ_ONLY",
-            "granted_at": now,
         }
+        if DEPLOYMENT_MODE == "aws":
+            item["granted_at"] = now
+        else:
+            item["shared_at"] = now
+            item["shared_by"] = owner
+
         sharing_table.put_item(Item=item)
+
+        # Virtual fields mapping for returned results (UI compatibility)
+        if "granted_at" not in item and "shared_at" in item:
+            item["granted_at"] = item["shared_at"]
+
         results.append(item)
     return results
 
@@ -521,6 +581,10 @@ def get_space_sharing(space_id: str, user_id: str) -> List[Dict[str, Any]]:
             item["username"] = profile.get("username", uid)
         except Exception as e:
             LOG.warning("Failed to lookup user", user_id=uid, error=str(e))
+
+        # Virtual fields mapping for returned results (UI compatibility)
+        if "granted_at" not in item and "shared_at" in item:
+            item["granted_at"] = item["shared_at"]
 
     return items
 

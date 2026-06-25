@@ -6,6 +6,7 @@ from utils.data_access_factory import get_database_access
 from utils.service_contracts import (
     AGENT_STATE_TABLE,
     ARCHITECTURE_BUCKET,
+    DEPLOYMENT_MODE,
     JOB_STATUS_TABLE,
     LOCKS_TABLE,
     REGION,
@@ -155,16 +156,17 @@ def share_threat_model(
                 access_level = "READ_ONLY"
 
             # Add to sharing table
-            sharing_table.put_item(
-                Item={
-                    "threat_model_id": threat_model_id,
-                    "user_id": user_id,
-                    "access_level": access_level,
-                    "shared_by": owner,
-                    "shared_at": datetime.now(timezone.utc).isoformat(),
-                    "owner": owner,
-                }
-            )
+            item = {
+                "threat_model_id": threat_model_id,
+                "user_id": user_id,
+                "access_level": access_level,
+                "shared_by": owner,
+                "shared_at": datetime.now(timezone.utc).isoformat(),
+            }
+            if DEPLOYMENT_MODE == "aws":
+                item["owner"] = owner
+
+            sharing_table.put_item(Item=item)
             shared_count += 1
 
         # Update state table to mark as shared

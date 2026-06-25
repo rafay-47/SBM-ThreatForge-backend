@@ -76,6 +76,55 @@ class _LegacyS3Access:
     def delete_object(self, bucket_name: str, object_key: str):
         return self._client_obj.delete_object(Bucket=bucket_name, Key=object_key)
 
+    def object_exists(self, bucket_name: str, object_key: str) -> bool:
+        try:
+            self._client_obj.head_object(Bucket=bucket_name, Key=object_key)
+            return True
+        except Exception:
+            return False
+
+    def generate_presigned_url(
+        self,
+        client_method: str,
+        params: dict,
+        expires_in: int,
+        http_method: str,
+    ) -> str:
+        return self._presign_obj.generate_presigned_url(
+            ClientMethod=client_method,
+            Params=params,
+            ExpiresIn=expires_in,
+            HttpMethod=http_method,
+        )
+
+    def generate_presigned_put_object(
+        self, bucket_name: str, object_key: str, file_type: str, expiration: int
+    ) -> str:
+        return self._presign_obj.generate_presigned_url(
+            ClientMethod="put_object",
+            Params={
+                "Bucket": bucket_name,
+                "Key": object_key,
+                "ContentType": file_type,
+            },
+            ExpiresIn=expiration,
+            HttpMethod="PUT",
+        )
+
+    def put_object(
+        self,
+        bucket_name: str,
+        object_key: str,
+        data: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> dict:
+        return self._client_obj.put_object(
+            Bucket=bucket_name,
+            Key=object_key,
+            Body=data,
+            ContentType=content_type,
+        )
+
 
 def _get_dynamodb_access():
     global _dynamodb_access
@@ -206,7 +255,7 @@ def _invoke_threat_model_agent(session_id: str, agent_input: dict) -> None:
     )
 
     try:
-        with url_request.urlopen(req, timeout=30) as response:
+        with url_request.urlopen(req, timeout=90) as response:
             if response.status >= 400:
                 raise InternalError(
                     f"Threat modeling agent invocation failed with status {response.status}"
@@ -288,7 +337,7 @@ def calculate_content_hash(data):
     return hashlib.sha256(content_json.encode("utf-8")).hexdigest()
 
 
-def delete_s3_object(object_key, bucket_name=ARCHITECTURE_BUCKET):
+def delete_s3_object(object_key, bucket_name=None):
     """
     Delete an object from an S3 bucket
 
@@ -299,6 +348,9 @@ def delete_s3_object(object_key, bucket_name=ARCHITECTURE_BUCKET):
     Returns:
     dict: Response from S3 delete operation
     """
+    if bucket_name is None:
+        import os
+        bucket_name = os.environ.get("ARCHITECTURE_BUCKET", ARCHITECTURE_BUCKET)
     try:
         response = _get_s3_access().delete_object(
             bucket_name=bucket_name,
@@ -692,30 +744,132 @@ def check_status(job_id):
         raise InternalError(e)
 
 
+def _generate_fallback_trail(job_id, agent_item):
+    if not agent_item:
+        return {"id": job_id}
+
+    title = agent_item.get("title", "Threat Model")
+    desc = agent_item.get("description", "No description provided.")
+    app_type = agent_item.get("application_type", "Not specified")
+
+    assumptions_list = agent_item.get("assumptions", [])
+    assumptions_md = "\n".join(f"- {a}" for a in assumptions_list) if assumptions_list else "- None"
+    space_context = f"""### Analysis Context for **{title}**
+
+- **Application Type**: {app_type}
+- **Description**: {desc}
+
+#### Assumptions:
+{assumptions_md}
+"""
+
+    assets_list = agent_item.get("assets", {}).get("assets", [])
+    assets_parts = []
+    if assets_list:
+        for asset in assets_list:
+            name = asset.get("name", "Unnamed Asset")
+            atype = asset.get("type", "Unknown")
+            adesc = asset.get("description", "No description.")
+            assets_parts.append(f"* **{name}** (Type: *{atype}*)\n  - {adesc}")
+        assets_content = "### Identified Assets\n\n" + "\n\n".join(assets_parts)
+    else:
+        assets_content = "No assets were defined for this model."
+
+    flows_list = agent_item.get("system_architecture", {}).get("data_flows", [])
+    boundaries_list = agent_item.get("system_architecture", {}).get("trust_boundaries", [])
+
+    flows_parts = []
+    if boundaries_list:
+        flows_parts.append("#### Trust Boundaries:")
+        for tb in boundaries_list:
+            source = tb.get("source_entity", "Unknown")
+            target = tb.get("target_entity", "Unknown")
+            purpose = tb.get("purpose", "No description.")
+            flows_parts.append(f"- **Boundary ({source} &harr; {target})**: {purpose}")
+
+    if flows_list:
+        if flows_parts:
+            flows_parts.append("")
+        flows_parts.append("#### Data Flows:")
+        for df in flows_list:
+            source = df.get("source_entity", "Unknown")
+            target = df.get("target_entity", "Unknown")
+            flow_desc = df.get("flow_description", "No description.")
+            flows_parts.append(f"- **Flow ({source} &rarr; {target})**: {flow_desc}")
+
+    if flows_parts:
+        flows_content = "### System Architecture & Data Flows\n\n" + "\n".join(flows_parts)
+    else:
+        flows_content = "No data flows or trust boundaries defined."
+
+    threats_list = agent_item.get("threat_list", {}).get("threats", [])
+    threats_content_list = []
+    if threats_list:
+        for idx, threat in enumerate(threats_list):
+            t_title = threat.get("title", "Unnamed Threat")
+            t_desc = threat.get("description", "No description.")
+            t_stride = threat.get("stride_category", "N/A")
+            t_target = threat.get("target", "N/A")
+            t_like = threat.get("likelihood", "N/A")
+            t_mit = threat.get("remediation", "No mitigation specified.")
+
+            threats_content_list.append(f"""### Threat {idx + 1}: {t_title}
+
+- **STRIDE Category**: {t_stride}
+- **Target Asset**: {t_target}
+- **Likelihood**: {t_like}
+
+#### Threat Description:
+{t_desc}
+
+#### Remediation / Mitigation:
+{t_mit}
+""")
+
+    return {
+        "id": job_id,
+        "assets": assets_content,
+        "flows": flows_content,
+        "gaps": [],
+        "threats": threats_content_list,
+        "space_context": space_context,
+    }
+
+
 @tracer.capture_method
 def check_trail(job_id):
     try:
         # Attempt to get the item from the DynamoDB table
         response = _trail_table().get_item(Key={"id": job_id})
 
-        # Check if the item exists
+        # Check if the item exists and has content
         if "Item" in response:
-            # Assuming there's a 'status' field in your DynamoDB item
-            assets = response["Item"].get("assets", "")
-            flows = response["Item"].get("flows", "")
-            gaps = response["Item"].get("gap", [])
-            threats = response["Item"].get("threats", [])
-            space_context = response["Item"].get("space_context", "")
-            return {
-                "id": job_id,
-                "assets": assets,
-                "flows": flows,
-                "gaps": gaps,
-                "threats": threats,
-                "space_context": space_context,
-            }
-        else:
-            return {"id": job_id}
+            item = response["Item"]
+            assets = item.get("assets", "")
+            flows = item.get("flows", "")
+            gaps = item.get("gap", [])
+            threats = item.get("threats", [])
+            space_context = item.get("space_context", "")
+            if assets or flows or threats or space_context:
+                return {
+                    "id": job_id,
+                    "assets": assets,
+                    "flows": flows,
+                    "gaps": gaps,
+                    "threats": threats,
+                    "space_context": space_context,
+                }
+
+        # Fallback to generating a trail from the threat model results
+        try:
+            agent_table = _get_dynamodb_access().table(AGENT_TABLE)
+            agent_resp = agent_table.get_item(Key={"job_id": job_id})
+            if "Item" in agent_resp:
+                return _generate_fallback_trail(job_id, convert_decimals(agent_resp["Item"]))
+        except Exception as e:
+            print(f"Failed to generate fallback trail: {e}")
+
+        return {"id": job_id}
 
     except Exception as e:
         print(e)
@@ -1244,12 +1398,14 @@ def fetch_shared_paginated(user_id: str, limit: int, cursor: str = None) -> dict
         threat_model_ids = [r["threat_model_id"] for r in sharing_records]
         threat_models = _batch_fetch_threat_models(threat_model_ids)
 
-        # Enrich records, skipping any where the threat model no longer exists
+        # Enrich records, skipping any where the threat model no longer exists or is owned by user
         items = []
         for sharing_record in sharing_records:
             tm_id = sharing_record["threat_model_id"]
             tm = threat_models.get(tm_id)
             if tm is None:
+                continue
+            if tm.get("owner") == user_id:
                 continue
             tm["is_owner"] = False
             tm["access_level"] = sharing_record["access_level"]
@@ -1434,61 +1590,137 @@ def _get_all_shared(sharing_table, table, owner):
 
 
 @tracer.capture_method
+@tracer.capture_method
 def fetch_all(owner, limit=None, cursor=None, filter_mode="all"):
     """
-    Fetch all threat models for a user (no pagination).
+    Fetch threat models for a user with pagination.
 
     Args:
         owner: User ID
-        limit: Ignored (kept for API compatibility)
-        cursor: Ignored (kept for API compatibility)
+        limit: Page size (10, 20, 50, 100) or None
+        cursor: Pagination cursor (Base64-encoded JSON) or None
         filter_mode: Filter mode - "owned", "shared", or "all" (default: "all")
 
     Returns:
         dict: {
             "catalogs": [...],
             "pagination": {
-                "hasNextPage": False,
-                "cursor": None,
+                "hasNextPage": bool,
+                "cursor": str | None,
                 "totalReturned": int
             }
         }
     """
     table = _get_dynamodb_access().table(AGENT_TABLE)
     sharing_table = _get_dynamodb_access().table(SHARING_TABLE)
-    LOG.info(f"Fetching all items for owner: {owner}, filter: {filter_mode}")
+    LOG.info(f"Fetching items for owner: {owner}, limit: {limit}, cursor: {cursor}, filter: {filter_mode}")
 
     try:
-        # Validate filter mode
-        valid_filters = ["owned", "shared", "all"]
-        if filter_mode not in valid_filters:
-            raise ValueError(f"Filter mode must be one of {valid_filters}")
+        # Validate limit if provided, and filter mode
+        if limit is not None:
+            validate_pagination_params(limit, filter_mode)
+        else:
+            # If limit is not specified, validate only the filter mode
+            valid_filters = ["owned", "shared", "all"]
+            if filter_mode not in valid_filters:
+                raise ValueError(f"Filter mode must be one of {valid_filters}")
+
+        # Decode cursor
+        cursor_data = decode_cursor(cursor) if cursor else None
+        
+        owned_cursor = None
+        shared_cursor = None
+        if cursor_data:
+            # Verify the cursor filter matches current filter mode
+            if cursor_data.get("filter") != filter_mode:
+                raise ValueError("Cursor filter mode mismatch")
+            owned_cursor = cursor_data.get("owned")
+            shared_cursor = cursor_data.get("shared")
 
         owned_items = []
         shared_items = []
+        owned_last_key = None
+        shared_last_key = None
 
-        # Query all owned threat models
+        # 1. Fetch owned items
         if filter_mode in ["owned", "all"]:
-            owned_items = get_all_by_owner(table, owner)
+            if limit is not None:
+                query_result = query_owned_paginated(
+                    table, owner, limit, exclusive_start_key=owned_cursor
+                )
+                owned_items = query_result.get("items", [])
+                owned_last_key = query_result.get("last_evaluated_key")
+            else:
+                owned_items = get_all_by_owner(table, owner)
+
             for item in owned_items:
                 item["is_owner"] = True
                 item["access_level"] = "OWNER"
 
-        # Query all shared threat models
+        # 2. Fetch shared items
         if filter_mode in ["shared", "all"] and owner != "MCP":
-            shared_result = _get_all_shared(sharing_table, table, owner)
-            shared_items = shared_result
+            if limit is not None:
+                query_result = query_shared_paginated(
+                    sharing_table, table, owner, limit, exclusive_start_key=shared_cursor
+                )
+                shared_items = query_result.get("items", [])
+                shared_last_key = query_result.get("last_evaluated_key")
+            else:
+                shared_items = _get_all_shared(sharing_table, table, owner)
 
-        # Combine and sort results by timestamp (newest first)
-        all_items = owned_items + shared_items
-        all_items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+        # 3. Combine and sort
+        combined = owned_items + shared_items
+        combined.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+
+        # 4. Handle pagination slicing
+        if limit is None:
+            returned_items = combined
+            hasNextPage = False
+            next_cursor = None
+        else:
+            if len(combined) > limit:
+                returned_items = combined[:limit]
+                hasNextPage = True
+
+                # Adjust pagination keys for cursor
+                returned_owned = [x for x in returned_items if x.get("is_owner") is True]
+                returned_shared = [x for x in returned_items if x.get("is_owner") is False]
+
+                next_owned_key = None
+                if len(returned_owned) < len(owned_items):
+                    if returned_owned:
+                        # Last returned owned item key
+                        next_owned_key = {"job_id": returned_owned[-1]["job_id"]}
+                    else:
+                        next_owned_key = owned_cursor
+                else:
+                    next_owned_key = owned_last_key
+
+                next_shared_key = None
+                if len(returned_shared) < len(shared_items):
+                    if returned_shared:
+                        # Last returned shared item key
+                        next_shared_key = {
+                            "threat_model_id": returned_shared[-1]["job_id"],
+                            "user_id": owner,
+                        }
+                    else:
+                        next_shared_key = shared_cursor
+                else:
+                    next_shared_key = shared_last_key
+
+                next_cursor = encode_cursor(next_owned_key, next_shared_key, filter_mode)
+            else:
+                returned_items = combined
+                hasNextPage = (owned_last_key is not None) or (shared_last_key is not None)
+                next_cursor = encode_cursor(owned_last_key, shared_last_key, filter_mode) if hasNextPage else None
 
         return {
-            "catalogs": convert_decimals(all_items),
+            "catalogs": convert_decimals(returned_items),
             "pagination": {
-                "hasNextPage": False,
-                "cursor": None,
-                "totalReturned": len(all_items),
+                "hasNextPage": hasNextPage,
+                "cursor": next_cursor,
+                "totalReturned": len(returned_items),
             },
         }
     except ValueError:
@@ -2308,7 +2540,9 @@ def get_dashboard_stats(owner: str) -> dict:
                                 "model_title": item.get("title"),
                                 "model_id": item.get("job_id"),
                                 "threat_id": t.get("id"),
-                                "stride_category": sc
+                                "stride_category": sc,
+                                "pasta_stage": t.get("pasta_stage"),
+                                "mitre_attack": t.get("mitre_attack")
                             })
 
     # Get user spaces and recent documents

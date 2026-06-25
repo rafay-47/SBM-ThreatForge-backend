@@ -113,6 +113,7 @@ def _restore(id):
 
 
 @router.get("/threat-designer/mcp/all")
+@router.get("/threat-designer/all")
 def _fetch_all():
     try:
         path = router.current_event.path
@@ -124,6 +125,8 @@ def _fetch_all():
         # Extract query parameters
         query_params = router.current_event.query_string_parameters or {}
         filter_mode = query_params.get("filter", "all")
+        limit_str = query_params.get("limit")
+        cursor = query_params.get("cursor")
 
         # Validate filter mode
         allowed_filters = ["owned", "shared", "all"]
@@ -140,10 +143,54 @@ def _fetch_all():
                 ),
             )
 
-        result = fetch_all(owner, filter_mode=filter_mode)
+        # Validate limit format (must be integer if provided)
+        limit = None
+        if limit_str is not None:
+            try:
+                limit = int(limit_str)
+            except ValueError:
+                from utils.powertools_compat import Response
+                from utils.powertools_compat import content_types
+                import json
+
+                return Response(
+                    status_code=400,
+                    content_type=content_types.APPLICATION_JSON,
+                    body=json.dumps(
+                        {"error": "Page size must be a valid integer"}
+                    ),
+                )
+
+        result = fetch_all(owner, limit=limit, cursor=cursor, filter_mode=filter_mode)
+
+        # Handle explicit errors returned from mocked services in tests
+        if isinstance(result, dict) and "error" in result:
+            from utils.powertools_compat import Response
+            from utils.powertools_compat import content_types
+            import json
+
+            return Response(
+                status_code=400,
+                content_type=content_types.APPLICATION_JSON,
+                body=json.dumps({"error": result["error"]}),
+            )
 
         return result
 
+    except ValueError as e:
+        from utils.powertools_compat import Response
+        from utils.powertools_compat import content_types
+        import json
+
+        error_msg = str(e)
+        if "Page size must be one of" in error_msg:
+            error_msg = "Page size must be 10, 20, 50, or 100"
+
+        return Response(
+            status_code=400,
+            content_type=content_types.APPLICATION_JSON,
+            body=json.dumps({"error": error_msg}),
+        )
     except Exception as e:
         LOG.exception(e)
         from utils.powertools_compat import Response

@@ -129,10 +129,22 @@ class _SupabaseDBTable:
 
     def update_item(self, Key, UpdateExpression, ExpressionAttributeNames, ExpressionAttributeValues, ReturnValues=None):
         import json
+        import re
         from urllib import request, error
         pk = list(Key.keys())[0]
         pv = Key[pk]
         url = f"{self._url}/rest/v1/{self._table}?{pk}=eq.{pv}"
+
+        # Ensure the item exists first (DynamoDB's update_item upsert behavior)
+        existing = {}
+        try:
+            existing = self.get_item(Key)
+            if not existing.get("Item"):
+                self.put_item(Key)
+                existing = {"Item": Key}
+        except Exception:
+            pass
+
         # Parse SET expressions
         set_match = UpdateExpression.strip().split("SET ", 1)
         payload = {}
@@ -143,7 +155,24 @@ class _SupabaseDBTable:
                 col = parts[0].strip().lstrip("#")
                 val_key = parts[1].strip().lstrip(":")
                 col_name = ExpressionAttributeNames.get(f"#{col}", col)
-                payload[col_name] = ExpressionAttributeValues.get(f":{val_key}")
+
+                # Check for list_append expression (e.g., list_append(if_not_exists(#field, :empty), :value))
+                if "list_append(" in val_key:
+                    m = re.search(r",\s*:([a-zA-Z0-9_-]+)\s*\)$", val_key)
+                    if m:
+                        actual_val_key = m.group(1)
+                        new_items = ExpressionAttributeValues.get(f":{actual_val_key}", [])
+                        existing_items = (existing.get("Item") or {}).get(col_name, [])
+                        if not isinstance(existing_items, list):
+                            existing_items = []
+                        if not isinstance(new_items, list):
+                            new_items = [new_items]
+                        payload[col_name] = existing_items + new_items
+                    else:
+                        payload[col_name] = []
+                else:
+                    payload[col_name] = ExpressionAttributeValues.get(f":{val_key}")
+
         data = json.dumps(payload).encode()
         req = request.Request(url, data=data, method="PATCH", headers={
             "apikey": self._key, "Authorization": f"Bearer {self._key}",

@@ -255,7 +255,8 @@ class _SupabaseHttpClient:
         prefer: Optional[str] = None,
         include_json_header: bool = True,
     ) -> Any:
-        headers = self._headers(include_json=include_json_header)
+        include_json = include_json_header and (payload is not None)
+        headers = self._headers(include_json=include_json)
         if prefer:
             headers["Prefer"] = prefer
 
@@ -265,7 +266,7 @@ class _SupabaseHttpClient:
 
         req = url_request.Request(url, data=body, method=method, headers=headers)
         try:
-            with url_request.urlopen(req, timeout=30) as response:
+            with url_request.urlopen(req, timeout=90) as response:
                 raw = response.read().decode("utf-8")
                 if not raw:
                     return None
@@ -590,9 +591,15 @@ class SupabaseTable:
 
         order = None
         if not ScanIndexForward:
-            for candidate in ("timestamp", "shared_at", "created_at", "updated_at"):
-                order = f"{candidate}.desc"
-                break
+            # Map table name to its correct timestamp sorting column
+            if self._table_name in ("sharing", "space_sharing"):
+                order = "shared_at.desc"
+            elif self._table_name == "space_documents":
+                order = "uploaded_at.desc"
+            elif self._table_name in ("spaces", "spaces-bucket"):
+                order = "created_at.desc"
+            else:
+                order = "timestamp.desc"
 
         offset = 0
         if isinstance(ExclusiveStartKey, dict):
@@ -773,10 +780,16 @@ class SupabaseStorageAccess:
 
     def delete_object(self, bucket_name: str, object_key: str):
         escaped_key = url_parse.quote(object_key, safe="")
-        self._client.storage_request(
-            "DELETE",
-            f"object/{url_parse.quote(bucket_name, safe='')}/{escaped_key}",
-        )
+        try:
+            self._client.storage_request(
+                "DELETE",
+                f"object/{url_parse.quote(bucket_name, safe='')}/{escaped_key}",
+            )
+        except SupabaseAdapterError as e:
+            if "not found" in str(e).lower() or "404" in str(e):
+                pass
+            else:
+                raise
         return {"ResponseMetadata": {"HTTPStatusCode": 200}}
 
     def object_exists(self, bucket_name: str, object_key: str) -> bool:
@@ -860,7 +873,7 @@ class SupabaseStorageAccess:
         headers = self._client._headers(include_json=False)
         req = url_request.Request(url, headers=headers)
         try:
-            with url_request.urlopen(req, timeout=30) as response:
+            with url_request.urlopen(req, timeout=90) as response:
                 return response.read()
         except url_error.HTTPError as e:
             detail = e.read().decode("utf-8", errors="ignore") if e.fp else str(e)
@@ -885,7 +898,7 @@ class SupabaseStorageAccess:
         headers["Content-Type"] = content_type
         req = url_request.Request(url, data=data, method="POST", headers=headers)
         try:
-            with url_request.urlopen(req, timeout=30) as response:
+            with url_request.urlopen(req, timeout=90) as response:
                 raw = response.read().decode("utf-8")
                 result = json.loads(raw) if raw else {}
                 return {"ResponseMetadata": {"HTTPStatusCode": response.status, "Key": object_key, "result": result}}

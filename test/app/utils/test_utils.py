@@ -228,22 +228,18 @@ class TestCreateDynamoDBItem:
     """Tests for create_dynamodb_item DynamoDB operation function."""
 
     @patch("utils.utils.datetime")
-    def test_creates_item_with_correct_structure(
-        self, mock_datetime, monkeypatch
-    ):
-        """Test that item is created with correct structure."""
+    def test_creates_item_with_correct_structure(self, mock_datetime, monkeypatch):
+        """Test that create_dynamodb_item creates item with correct structure."""
         # Mock datetime
         mock_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         mock_datetime.now.return_value = mock_now
 
-        # Mock DynamoDB
+        # Mock database access
         mock_table = Mock()
         mock_table.put_item.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
-        mock_dynamodb = Mock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3 = Mock()
-        mock_boto3.resource.return_value = mock_dynamodb
-        monkeypatch.setattr("utils.utils.boto3", mock_boto3)
+        mock_db = Mock()
+        mock_db.table.return_value = mock_table
+        monkeypatch.setattr("utils.utils.get_database_access", lambda **kwargs: mock_db)
 
         # Test data
         agent_state = {
@@ -257,11 +253,8 @@ class TestCreateDynamoDBItem:
         # Call function
         create_dynamodb_item(agent_state, "test-table")
 
-        # Verify DynamoDB calls
-        mock_boto3.resource.assert_called_once()
-        assert mock_boto3.resource.call_args.args == ("dynamodb",)
-        assert "region_name" in mock_boto3.resource.call_args.kwargs
-        mock_dynamodb.Table.assert_called_once_with("test-table")
+        # Verify database calls
+        mock_db.table.assert_called_once_with("test-table")
 
         # Verify put_item was called with correct structure
         mock_table.put_item.assert_called_once()
@@ -282,14 +275,12 @@ class TestCreateDynamoDBItem:
         mock_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         mock_datetime.now.return_value = mock_now
 
-        # Mock DynamoDB
+        # Mock database access
         mock_table = Mock()
         mock_table.put_item.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
-        mock_dynamodb = Mock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3 = Mock()
-        mock_boto3.resource.return_value = mock_dynamodb
-        monkeypatch.setattr("utils.utils.boto3", mock_boto3)
+        mock_db = Mock()
+        mock_db.table.return_value = mock_table
+        monkeypatch.setattr("utils.utils.get_database_access", lambda **kwargs: mock_db)
 
         # Test data
         agent_state = {"job_id": "test-job-123", "s3_location": "test-key.json"}
@@ -311,14 +302,12 @@ class TestCreateDynamoDBItem:
         mock_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         mock_datetime.now.return_value = mock_now
 
-        # Mock DynamoDB
+        # Mock database access
         mock_table = Mock()
         mock_table.put_item.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
-        mock_dynamodb = Mock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3 = Mock()
-        mock_boto3.resource.return_value = mock_dynamodb
-        monkeypatch.setattr("utils.utils.boto3", mock_boto3)
+        mock_db = Mock()
+        mock_db.table.return_value = mock_table
+        monkeypatch.setattr("utils.utils.get_database_access", lambda **kwargs: mock_db)
 
         # Test data with only required fields
         agent_state = {"job_id": "test-job-123", "s3_location": "test-key.json"}
@@ -343,14 +332,12 @@ class TestCreateDynamoDBItem:
         mock_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         mock_datetime.now.return_value = mock_now
 
-        # Mock DynamoDB
+        # Mock database access
         mock_table = Mock()
         mock_table.put_item.return_value = {"ResponseMetadata": {"HTTPStatusCode": 200}}
-        mock_dynamodb = Mock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3 = Mock()
-        mock_boto3.resource.return_value = mock_dynamodb
-        monkeypatch.setattr("utils.utils.boto3", mock_boto3)
+        mock_db = Mock()
+        mock_db.table.return_value = mock_table
+        monkeypatch.setattr("utils.utils.get_database_access", lambda **kwargs: mock_db)
 
         # Test data
         agent_state = {
@@ -364,13 +351,8 @@ class TestCreateDynamoDBItem:
         # Call function
         create_dynamodb_item(agent_state, "my-table")
 
-        # Verify boto3 resource was called
-        mock_boto3.resource.assert_called_once()
-        assert mock_boto3.resource.call_args.args == ("dynamodb",)
-        assert "region_name" in mock_boto3.resource.call_args.kwargs
-
         # Verify Table was called with correct table name
-        mock_dynamodb.Table.assert_called_once_with("my-table")
+        mock_db.table.assert_called_once_with("my-table")
 
         # Verify put_item was called
         assert mock_table.put_item.call_count == 1
@@ -384,18 +366,16 @@ class TestCreateDynamoDBItem:
         mock_now = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         mock_datetime.now.return_value = mock_now
 
-        # Mock DynamoDB to raise exception
+        # Mock database access to raise exception
         mock_table = Mock()
         error_response = {"Error": {"Message": "DynamoDB error"}}
         exception = Exception()
         exception.response = error_response
         mock_table.put_item.side_effect = exception
 
-        mock_dynamodb = Mock()
-        mock_dynamodb.Table.return_value = mock_table
-        mock_boto3 = Mock()
-        mock_boto3.resource.return_value = mock_dynamodb
-        monkeypatch.setattr("utils.utils.boto3", mock_boto3)
+        mock_db = Mock()
+        mock_db.table.return_value = mock_table
+        monkeypatch.setattr("utils.utils.get_database_access", lambda **kwargs: mock_db)
 
         # Test data
         agent_state = {"job_id": "test-job-123", "s3_location": "test-key.json"}

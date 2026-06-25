@@ -344,3 +344,31 @@ def sample_api_event():
             }
         },
     }
+
+
+@pytest.fixture(autouse=True)
+def reset_service_globals():
+    """Reset cached singleton access adapters in services to prevent test pollution."""
+    # Reset threat_designer_service globals
+    try:
+        import services.threat_designer_service as tds
+        tds._dynamodb_access = None
+        tds._s3_access = None
+        tds._agent_core_client = None
+        tds.dynamodb = None
+        tds.table = None
+        tds.agent_core_client = None
+        tds.s3 = None
+        tds.s3_pre = None
+    except (ImportError, AttributeError):
+        pass
+
+    # Reset attack_tree_service globals
+    try:
+        import services.attack_tree_service as ats
+        ats._db_access = None
+        ats._agent_core_client = None
+        ats.dynamodb = None
+        ats.agent_core_client = None
+    except (ImportError, AttributeError):
+        pass

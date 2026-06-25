@@ -153,15 +153,18 @@ class TestGetEndpoints:
         mock_router.current_event.path = "/threat-designer/all"
         mock_router.current_event.request_context.authorizer = {"user_id": "user-123"}
         mock_router.current_event.query_string_parameters = {}
-        mock_fetch_all.return_value = {"owned": [{"job_id": "job-1"}], "shared": []}
+        mock_fetch_all.return_value = {
+            "catalogs": [{"job_id": "job-1", "is_owner": True, "access_level": "OWNER"}],
+            "pagination": {"hasNextPage": False, "cursor": None, "totalReturned": 1}
+        }
 
         from routes.threat_designer_route import _fetch_all
 
         result = _fetch_all()
 
-        assert "owned" in result
+        assert "catalogs" in result
         mock_fetch_all.assert_called_once_with(
-            "user-123", limit=20, cursor=None, filter_mode="all"
+            "user-123", limit=None, cursor=None, filter_mode="all"
         )
 
     @patch("routes.threat_designer_route.fetch_all")

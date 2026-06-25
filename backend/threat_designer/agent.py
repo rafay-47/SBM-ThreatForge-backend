@@ -53,11 +53,34 @@ executor = ThreadPoolExecutor(max_workers=10)
 threat_config = ThreatModelingConfig()
 
 
-def _run_agent_async(state: Dict, config: Dict, job_id: str, agent_config: Dict):
+def _run_agent_async(state: Dict, config: Dict, job_id: str, agent_config: Dict, event: Dict = None):
     """
     Run the agent in a background thread.
+
+    When ``event`` is provided (threat-modeling path), ``state`` and
+    ``agent_config`` are ``None`` and this function performs the heavy
+    initialisation (_create_agent_config / _initialize_state) inside the
+    background thread so that the HTTP handler can return 200 immediately.
     """
     try:
+        # --- deferred init for threat-modeling requests -----------------
+        if event is not None and state is None:
+            try:
+                agent_config_data = _create_agent_config(event)
+                state = _initialize_state(event, job_id)
+                agent_config = {
+                    "start_time": agent_config_data.get("start_time", datetime.now()),
+                    "reasoning": agent_config_data.get("reasoning", False),
+                }
+                config = {
+                    "configurable": agent_config_data,
+                    "recursion_limit": 100,
+                    "max_concurrency": 3,
+                }
+            except Exception as init_err:
+                _handle_error_response(init_err, job_id, HTTP_STATUS_INTERNAL_SERVER_ERROR)
+                return
+        # ---------------------------------------------------------------
         with operation_context("agent_execution", job_id):
             # Check if this is an attack tree request
             request_type = state.get("type")
@@ -642,43 +665,38 @@ async def handler(request: InvocationRequest, http_request: Request) -> Dict[str
                 }
 
                 message = "Attack tree generation started"
+
+                logger.debug("Agent invocation accepted", job_id=job_id)
+
+                # Create full configuration for the agent (attack tree)
+                config = {
+                    "configurable": agent_config,
+                    "recursion_limit": 100,
+                    "max_concurrency": 3,
+                }
+
+                # Submit the agent execution to run in background
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(
+                    executor, _run_agent_async, state, config, job_id, agent_config
+                )
             else:
                 logger.debug("Processing threat modeling request", job_id=job_id)
-
-                # Create agent configuration
-                agent_config = _create_agent_config(event)
-
-                # Initialize state for threat modeling
-                state = _initialize_state(event, job_id)
-
                 message = "Threat modeling process started"
 
-            logger.debug("Agent invocation accepted", job_id=job_id)
-
-            # Log execution start
-            logger.debug(
-                "Accepting request",
-                job_id=job_id,
-                request_type=request_type or "threat_modeling",
-                replay=event.get("replay", False),
-                reasoning=agent_config["reasoning"],
-                iteration=state.get("iteration", 0)
-                if isinstance(state, dict) and "iteration" in state
-                else 0,
-            )
-
-            # Create full configuration for the agent
-            config = {
-                "configurable": agent_config,
-                "recursion_limit": 100,
-                "max_concurrency": 3,
-            }
-
-            # Submit the agent execution to run in background
-            loop = asyncio.get_event_loop()
-            loop.run_in_executor(
-                executor, _run_agent_async, state, config, job_id, agent_config
-            )
+                # Submit to background — heavy init (_create_agent_config,
+                # _initialize_state) runs inside the worker thread so the
+                # HTTP handler returns 200 immediately.
+                loop = asyncio.get_event_loop()
+                loop.run_in_executor(
+                    executor,
+                    _run_agent_async,
+                    None,   # state  — will be created in background
+                    None,   # config — will be created in background
+                    job_id,
+                    None,   # agent_config — will be created in background
+                    event,  # raw event for deferred init
+                )
 
             # Return immediately with 200 status
             return JSONResponse(

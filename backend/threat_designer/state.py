@@ -285,19 +285,17 @@ class Threat(BaseModel):
         ),
     ]
     pasta_stage: Annotated[
-        Optional[Literal[*[stage.value for stage in PastaStage]]],
+        Literal[*[stage.value for stage in PastaStage]],
         Field(
-            description=f"The PASTA stage mapping: One of {', '.join([stage.value for stage in PastaStage])}.",
-            default=None,
+            description=f"The PASTA stage mapping: One of {', '.join([stage.value for stage in PastaStage])}."
         ),
-    ] = None
+    ]
     mitre_attack: Annotated[
-        Optional[Literal[*[tactic.value for tactic in MitreAttackTactic]]],
+        Literal[*[tactic.value for tactic in MitreAttackTactic]],
         Field(
-            description=f"The MITRE ATT&CK tactic classification: One of {', '.join([tactic.value for tactic in MitreAttackTactic])}.",
-            default=None,
+            description=f"The MITRE ATT&CK tactic classification: One of {', '.join([tactic.value for tactic in MitreAttackTactic])}."
         ),
-    ] = None
+    ]
     description: Annotated[
         str,
         Field(
