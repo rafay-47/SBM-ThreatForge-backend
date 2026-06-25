@@ -86,7 +86,7 @@ def _tm_fetch_results(id):
 
 @router.post("/threat-designer/mcp")
 @router.post("/threat-designer")
-def tm_start():
+async def tm_start():
     try:
         body = router.current_event.json_body
 
@@ -96,7 +96,7 @@ def tm_start():
         else:
             owner = router.current_event.request_context.authorizer.get("user_id")
 
-        return invoke_lambda(owner, body)
+        return await invoke_lambda(owner, body)
     except Exception as e:
         LOG.exception(e)
 

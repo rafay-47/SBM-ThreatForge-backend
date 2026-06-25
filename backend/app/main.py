@@ -271,7 +271,7 @@ async def _dispatch(request: Request) -> FastAPIResponse:
 
     # Resolve through the existing router
     try:
-        result = _resolver.resolve(event, None)
+        result = await _resolver.resolve(event, None)
         status = result.get("statusCode", 200)
         resp_body = result.get("body", "")
         resp_headers = {k: v for k, v in result.get("headers", {}).items()}

@@ -248,7 +248,7 @@ except ModuleNotFoundError:
                     return self._serialize(handler(ex))
             raise ex
 
-        def resolve(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+        async def resolve(self, event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             del context
             self.current_event = _CurrentEvent(event)
             method = self.current_event.http_method.upper()
@@ -270,7 +270,14 @@ except ModuleNotFoundError:
                     continue
 
                 try:
-                    return self._serialize(route["func"](**params))
+                    import inspect
+                    import anyio
+                    func = route["func"]
+                    if inspect.iscoroutinefunction(func):
+                        result_val = await func(**params)
+                    else:
+                        result_val = await anyio.to_thread.run_sync(lambda: func(**params))
+                    return self._serialize(result_val)
                 except Exception as ex:
                     return self._resolve_exception(ex)
 

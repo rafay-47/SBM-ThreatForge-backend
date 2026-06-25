@@ -222,16 +222,19 @@ def generate_random_uuid():
     return str(uuid.uuid4())
 
 
-def _invoke_threat_model_agent(session_id: str, agent_input: dict) -> None:
+async def _invoke_threat_model_agent(session_id: str, agent_input: dict) -> None:
     """Invoke threat modeling agent using AWS runtime or local HTTP endpoint."""
     payload = json.dumps({"input": agent_input})
     agent_core_client = _get_agent_core_client()
 
     if agent_core_client and AGENT_CORE_RUNTIME:
-        agent_core_client.invoke_agent_runtime(
-            agentRuntimeArn=AGENT_CORE_RUNTIME,
-            runtimeSessionId=session_id,
-            payload=payload,
+        import anyio
+        await anyio.to_thread.run_sync(
+            lambda: agent_core_client.invoke_agent_runtime(
+                agentRuntimeArn=AGENT_CORE_RUNTIME,
+                runtimeSessionId=session_id,
+                payload=payload,
+            )
         )
         return
 
@@ -247,25 +250,24 @@ def _invoke_threat_model_agent(session_id: str, agent_input: dict) -> None:
         else f"{THREAT_MODELING_AGENT_URL}/invocations"
     )
 
-    req = url_request.Request(
-        endpoint,
-        data=payload.encode("utf-8"),
-        method="POST",
-        headers={"Content-Type": "application/json"},
-    )
-
+    import httpx
     try:
-        with url_request.urlopen(req, timeout=90) as response:
-            if response.status >= 400:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                endpoint,
+                content=payload.encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                timeout=90.0,
+            )
+            if response.status_code >= 400:
                 raise InternalError(
-                    f"Threat modeling agent invocation failed with status {response.status}"
+                    f"Threat modeling agent invocation failed with status {response.status_code}: {response.text}"
                 )
-    except url_error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="ignore") if e.fp else str(e)
+    except httpx.HTTPStatusError as e:
         raise InternalError(
-            f"Threat modeling agent invocation failed ({e.code}): {detail}"
+            f"Threat modeling agent invocation failed ({e.response.status_code}): {e.response.text}"
         )
-    except url_error.URLError as e:
+    except httpx.RequestError as e:
         raise InternalError(f"Threat modeling agent invocation failed: {e}")
 
 
@@ -505,7 +507,7 @@ def delete_dynamodb_item(table, key, owner):
 
 
 @tracer.capture_method
-def invoke_lambda(owner, payload):
+async def invoke_lambda(owner, payload):
     s3_location = payload.get("s3_location")
     iteration = payload.get("iteration")
     reasoning = payload.get("reasoning", 0)
@@ -516,8 +518,10 @@ def invoke_lambda(owner, payload):
     application_type = payload.get("application_type", "hybrid")
     space_id = payload.get("space_id") or None
 
+    import anyio
+
     if space_id and owner != "MCP":
-        check_space_access(space_id, owner)
+        await anyio.to_thread.run_sync(check_space_access, space_id, owner)
 
     if is_replay:
         id = payload.get("id")
@@ -551,18 +555,18 @@ def invoke_lambda(owner, payload):
         if is_version and previous_job_id:
             state_item["parent_id"] = previous_job_id
             state_item["mirror_attack_trees"] = mirror_attack_trees
-        _state_table().put_item(Item=state_item)
+        await anyio.to_thread.run_sync(lambda: _state_table().put_item(Item=state_item))
         LOG.info(f"State initialized to START for job {id}")
 
         # Step 2: If this is a replay, store backup in the dedicated backup table
         if is_replay:
             agent_table = _get_dynamodb_access().table(AGENT_TABLE)
 
-            response = agent_table.get_item(Key={"job_id": id})
+            response = await anyio.to_thread.run_sync(lambda: agent_table.get_item(Key={"job_id": id}))
 
             if "Item" in response:
                 backup_data = copy.deepcopy(response["Item"])
-                _backup_table().put_item(Item=backup_data)
+                await anyio.to_thread.run_sync(lambda: _backup_table().put_item(Item=backup_data))
 
                 LOG.info(f"Backup stored in backup table for job_id: {id}")
             else:
@@ -570,7 +574,7 @@ def invoke_lambda(owner, payload):
 
         # Step 2b: If version with mirror_sharing, copy sharing records from parent
         if is_version and mirror_sharing and previous_job_id:
-            _copy_sharing_records(previous_job_id, id)
+            await anyio.to_thread.run_sync(_copy_sharing_records, previous_job_id, id)
 
         # Step 3: Invoke the agent
         agent_input = {
@@ -594,7 +598,7 @@ def invoke_lambda(owner, payload):
             agent_input["previous_job_id"] = previous_job_id
             agent_input["mirror_attack_trees"] = mirror_attack_trees
 
-        _invoke_threat_model_agent(session_id, agent_input)
+        await _invoke_threat_model_agent(session_id, agent_input)
 
         agent_state = {
             "job_id": id,
@@ -612,7 +616,7 @@ def invoke_lambda(owner, payload):
             # For version, set is_shared if sharing was mirrored
             if is_version and mirror_sharing:
                 agent_state["is_shared"] = True
-            create_dynamodb_item(agent_state, AGENT_TABLE)
+            await anyio.to_thread.run_sync(create_dynamodb_item, agent_state, AGENT_TABLE)
 
         return {"id": id}
     except Exception as e:
@@ -620,17 +624,19 @@ def invoke_lambda(owner, payload):
         # Update state to FAILED on error
         try:
             current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
-            _state_table().update_item(
-                Key={"id": id},
-                UpdateExpression="SET #state = :state, #updated_at = :updated_at",
-                ExpressionAttributeNames={
-                    "#state": "state",
-                    "#updated_at": "updated_at",
-                },
-                ExpressionAttributeValues={
-                    ":state": "FAILED",
-                    ":updated_at": current_time,
-                },
+            await anyio.to_thread.run_sync(
+                lambda: _state_table().update_item(
+                    Key={"id": id},
+                    UpdateExpression="SET #state = :state, #updated_at = :updated_at",
+                    ExpressionAttributeNames={
+                        "#state": "state",
+                        "#updated_at": "updated_at",
+                    },
+                    ExpressionAttributeValues={
+                        ":state": "FAILED",
+                        ":updated_at": current_time,
+                    },
+                )
             )
             LOG.info(f"State updated to FAILED for job {id}")
         except Exception as update_error:
