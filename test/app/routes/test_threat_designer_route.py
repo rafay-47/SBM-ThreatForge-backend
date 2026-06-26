@@ -304,7 +304,8 @@ class TestPostEndpoints:
 
         from routes.threat_designer_route import tm_start
 
-        result = tm_start()
+        import asyncio
+        result = asyncio.run(tm_start())
 
         assert result["job_id"] == "test-job-123"
         mock_invoke_lambda.assert_called_once()
@@ -319,7 +320,8 @@ class TestPostEndpoints:
 
         from routes.threat_designer_route import tm_start
 
-        tm_start()
+        import asyncio
+        asyncio.run(tm_start())
 
         call_args = mock_invoke_lambda.call_args
         assert call_args[0][0] == "MCP"
@@ -692,7 +694,8 @@ class TestErrorHandling:
 
         from routes.threat_designer_route import tm_start
 
-        tm_start()
+        import asyncio
+        asyncio.run(tm_start())
 
         mock_log.exception.assert_called_once_with(test_exception)
 

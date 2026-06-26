@@ -26,23 +26,32 @@ def main() -> int:
     env.setdefault("DEPLOYMENT_MODE", "local")
 
     port = env.get("PORT", "8000")
+    workers = env.get("WORKERS", "1")
 
     print(f"Starting backend app with: {python_exec}")
     print(f"App directory: {app_dir}")
     print(f"Listening on http://0.0.0.0:{port}")
 
+    cmd = [
+        python_exec,
+        "-m",
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        port,
+    ]
+
+    if workers != "1":
+        cmd.extend(["--workers", workers])
+        print(f"Running Uvicorn with {workers} workers (reload disabled)")
+    else:
+        cmd.append("--reload")
+        print("Running Uvicorn in reload mode (single worker)")
+
     result = subprocess.run(
-        [
-            python_exec,
-            "-m",
-            "uvicorn",
-            "main:app",
-            "--host",
-            "0.0.0.0",
-            "--port",
-            port,
-            "--reload",
-        ],
+        cmd,
         cwd=str(app_dir),
         env=env,
     )

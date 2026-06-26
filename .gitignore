@@ -55,3 +55,4 @@ sbm-threatforge-droplet-key
 sbm-threatforge-droplet-key.pub
 sbm-threatforge-droplet-key.pem
 repos/
+.hypothesis/

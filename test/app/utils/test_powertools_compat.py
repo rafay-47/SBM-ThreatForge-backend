@@ -36,7 +36,8 @@ def test_resolve_prefers_static_route_over_parameterized_route():
         "requestContext": {"http": {"method": "GET"}, "authorizer": {}},
     }
 
-    response = app.resolve(event, None)
+    import asyncio
+    response = asyncio.run(app.resolve(event, None))
 
     assert response["statusCode"] == 200
     body = json.loads(response["body"])

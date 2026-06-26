@@ -117,7 +117,8 @@ class TestInvokeLambda:
         }
 
         # Execute
-        result = invoke_lambda("user-123", payload)
+        import asyncio
+        result = asyncio.run(invoke_lambda("user-123", payload))
 
         # Assert
         assert result == {"id": "test-uuid-123"}
@@ -197,7 +198,8 @@ class TestInvokeLambda:
         }
 
         # Execute
-        result = invoke_lambda("user-123", payload)
+        import asyncio
+        result = asyncio.run(invoke_lambda("user-123", payload))
 
         # Assert
         assert result == {"id": "existing-job-123"}
@@ -250,8 +252,9 @@ class TestInvokeLambda:
         }
 
         # Execute and Assert
+        import asyncio
         with pytest.raises(InternalError):
-            invoke_lambda("user-123", payload)
+            asyncio.run(invoke_lambda("user-123", payload))
 
 
 # ============================================================================
